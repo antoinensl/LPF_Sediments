@@ -1,6 +1,6 @@
 # Builds Sediments for Windows and macOS on GitHub's machines.
 #  - every push to main: downloadable builds in the "Actions" tab (kept 14 days)
-#  - every tag v* (for example v0.8.0): a Release with the two zips, kept for good
+#  - a new version number in CMakeLists.txt: a Release with the two zips, kept for good
 name: Build
 
 on:
@@ -145,18 +145,41 @@ jobs:
           path: Sediments-macOS.zip
           retention-days: 14
 
+  # Publishes a Release when the version in CMakeLists.txt has none yet
+  # (raise "project(Sediments VERSION x.y.z)" to publish a new one).
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     needs: [windows, macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Read the version
+        id: version
+        run: |
+          v=$(sed -n 's/^project(Sediments VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          echo "tag=v$v" >> "$GITHUB_OUTPUT"
+          if gh release view "v$v" > /dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"; echo "Release v$v already exists"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"; echo "Will publish v$v"
+          fi
+
       - uses: actions/download-artifact@v4
+        if: steps.version.outputs.exists == 'false'
         with:
           path: dist
           merge-multiple: true
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: dist/*.zip
-          generate_release_notes: true
+
+      - name: Publish the release
+        if: steps.version.outputs.exists == 'false'
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" dist/*.zip \
+            --target "$GITHUB_SHA" \
+            --title "Sediments ${{ steps.version.outputs.tag }}" \
+            --notes "Windows : Sediments-Windows.zip (dézippe, puis INSTALLER.bat). Mac Apple Silicon, macOS 14 ou plus : Sediments-macOS.zip (clic droit sur Installer.command, puis Ouvrir). Voir LISEZMOI.txt dans chaque zip." \
+            --generate-notes
