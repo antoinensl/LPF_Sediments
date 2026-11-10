@@ -1,7 +1,7 @@
 # Build output
 build/
 cmake-build-*/
-Plugin_pour_Reaper/
+Plugin_for_Reaper/
 
 # Dependencies fetched or installed locally
 /JUCE

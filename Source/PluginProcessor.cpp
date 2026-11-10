@@ -27,19 +27,19 @@ juce::AudioProcessorValueTreeState::ParameterLayout SedimentsProcessor::createLa
     AudioProcessorValueTreeState::ParameterLayout layout;
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "x", 1 }, "X", 0.0f, 1.0f, 0.5f));
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "y", 1 }, "Y", 0.0f, 1.0f, 0.5f));
-    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "blur", 1 }, "Blur", 0.0f, 1.0f, 0.3f));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "blur", 1 }, "Focus", 0.0f, 1.0f, 0.3f));
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "terrain", 1 }, "Terrain", NormalisableRange<float> (0.0f, 1.0f), 0.0f,
                     AudioParameterFloatAttributes().withStringFromValueFunction ([] (float v, int)
                     {
-                        if (v < 0.005f) return String ("voisins");
-                        if (v > 0.995f) return String ("appris");
-                        return String (juce::roundToInt (v * 100.0f)) + " % appris";
+                        if (v < 0.005f) return String ("Your sounds");
+                        if (v > 0.995f) return String ("Learned");
+                        return String (juce::roundToInt (v * 100.0f)) + " % learned";
                     })));
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "glide", 1 }, "Glide", 0.0f, 1.0f, 0.35f));
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "gain", 1 }, "Gain",
                                                        NormalisableRange<float> (-48.0f, 12.0f, 0.1f), 0.0f,
                                                        AudioParameterFloatAttributes().withLabel ("dB")));
-    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "dry", 1 }, "Dry input", 0.0f, 1.0f, 0.0f));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "dry", 1 }, "Input", 0.0f, 1.0f, 0.0f));
 
     // Original sounds (concatenative playback)
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "source", 1 }, "Source", NormalisableRange<float> (0.0f, 1.0f), 0.0f,
@@ -62,14 +62,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout SedimentsProcessor::createLa
     // Path
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { "pathOn", 1 }, "Path play", false));
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "pathSync", 1 }, "Path sync",
-                    StringArray { "Libre", "1 temps", "2 temps", "1 mesure", "2 mesures", "4 mesures" }, 0));
+                    StringArray { "Free", "1 beat", "2 beats", "1 bar", "2 bars", "4 bars" }, 0));
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "pathSpeed", 1 }, "Path speed",
                     NormalisableRange<float> (0.125f, 8.0f, 0.0f, 0.4f), 1.0f,
                     AudioParameterFloatAttributes().withStringFromValueFunction ([] (float v, int) { return String (v, 2) + " x"; })));
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "pathDir", 1 }, "Path direction",
-                    StringArray { "Avant", "Arriere", "Aller-retour" }, 0));
+                    StringArray { "Forward", "Backward", "Back and forth" }, 0));
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "pathAnchor", 1 }, "Path anchor",
-                    StringArray { "Fixe", "Suit le curseur" }, 0));
+                    StringArray { "Fixed", "Follow the cursor" }, 0));
 
     // MIDI
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { "midiMode", 1 }, "MIDI notes", false));

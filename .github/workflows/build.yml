@@ -131,7 +131,7 @@ jobs:
           cp -R build/Sediments_artefacts/Release/AU/Sediments.component "$out/"
           cp -R build/Sediments_artefacts/Release/Standalone/Sediments.app "$out/"
           cp packaging/macos/* "$out/"
-          chmod +x "$out/Installer.command"
+          chmod +x "$out/Install.command"
           # ad-hoc signature (free; enough for the plugin to load on your own Mac)
           for b in "$out/Sediments.vst3" "$out/Sediments.component" "$out/Sediments.app"; do
             codesign --force --deep --sign - "$b"
@@ -181,5 +181,5 @@ jobs:
           gh release create "${{ steps.version.outputs.tag }}" dist/*.zip \
             --target "$GITHUB_SHA" \
             --title "Sediments ${{ steps.version.outputs.tag }}" \
-            --notes "Windows : Sediments-Windows.zip (dézippe, puis INSTALLER.bat). Mac Apple Silicon, macOS 14 ou plus : Sediments-macOS.zip (clic droit sur Installer.command, puis Ouvrir). Voir LISEZMOI.txt dans chaque zip." \
+            --notes "Windows: Sediments-Windows.zip (unzip, then double-click INSTALL.bat). Apple Silicon Mac, macOS 14 or later: Sediments-macOS.zip (right-click Install.command, then Open). See README.txt in each zip." \
             --generate-notes
