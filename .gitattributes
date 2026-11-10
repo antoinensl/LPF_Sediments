@@ -1,3 +1,5 @@
 # Windows scripts keep their CRLF line endings exactly as stored
 *.bat -text
 *.ps1 -text
+packaging/windows/*.txt -text
+*.command text eol=lf

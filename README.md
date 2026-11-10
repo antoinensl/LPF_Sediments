@@ -1,5 +1,7 @@
 # Sediments (prototype v0.8)
 
+[![Build](https://github.com/antoinensl/LPF_Sediments/actions/workflows/build.yml/badge.svg)](https://github.com/antoinensl/LPF_Sediments/actions/workflows/build.yml)
+
 Instrument VST3 pour Reaper, entre deux approches : le **terrain latent** (inspiré de [nn.terrain](https://jasper-zheng.github.io/nn_terrain/)) et la **synthèse concaténative** (dans l'esprit de CataRT).
 
 Tes enregistrements se déposent sur une carte 2D, les sons semblables les uns près des autres. Tu t'y déplaces à la souris, avec des gestes enregistrés ou au clavier MIDI, et le son est soit réinventé par un modèle neuronal RAVE, soit recomposé à partir de grains de tes sons d'origine, soit un mélange des deux. Tout se fait dans Reaper, sans Max.
@@ -121,7 +123,21 @@ Pour jouer : sur la piste du plugin, active l'armement d'enregistrement et chois
 
 Hors mode MIDI, le son est continu (drone) et suit X/Y comme avant.
 
+## Télécharger une version prête (Windows et Mac)
+
+Le plugin est compilé automatiquement par GitHub à chaque mise à jour : plus besoin de Visual Studio ni de libtorch.
+
+1. Sur la page du dépôt, colonne de droite, ouvre **Releases** et prends la dernière version.
+2. Télécharge `Sediments-Windows.zip` ou `Sediments-macOS.zip` (Mac Apple Silicon : M1, M2, M3…).
+3. Dézippe, puis suis le fichier `LISEZMOI.txt` : sous Windows, un double-clic sur `INSTALLER.bat` ; sur Mac, clic droit sur `Installer.command`, puis « Ouvrir ».
+
+Les toutes dernières versions de travail sont aussi dans l'onglet **Actions** (choisis la dernière exécution réussie, en bas de la page : « Artifacts »). Elles y restent 14 jours, et il faut être connecté à GitHub pour les télécharger.
+
+Sur Mac, le plugin n'est pas signé par Apple (la signature officielle coûte 99 € par an). L'installateur retire la mise en quarantaine pour que macOS accepte de le charger sur ton ordinateur.
+
 ## Compilation sous Windows (pas à pas)
+
+Seulement si tu veux compiler toi-même.
 
 Tu n'as à installer que deux choses une fois, puis à double-cliquer sur un script.
 

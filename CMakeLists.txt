@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.22)
+cmake_minimum_required(VERSION 3.24)
 project(Sediments VERSION 0.8.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -67,13 +67,19 @@ set(LT_UI_SOURCES
     Source/ui/Panels.cpp)
 
 # --- The plugin ---------------------------------------------------------------
+# Audio Unit on macOS too (Logic, GarageBand, Reaper all accept it).
+set(LT_FORMATS VST3 Standalone)
+if(APPLE)
+    list(APPEND LT_FORMATS AU)
+endif()
+
 juce_add_plugin(Sediments
     COMPANY_NAME "Antoine Boucherikha"
     BUNDLE_ID com.boucherikha.sediments
     PRODUCT_NAME "Sediments"
     PLUGIN_MANUFACTURER_CODE Lpfl
     PLUGIN_CODE Sdmt
-    FORMATS VST3 Standalone
+    FORMATS ${LT_FORMATS}
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT TRUE
     NEEDS_MIDI_OUTPUT FALSE
@@ -111,6 +117,21 @@ if(MSVC)
 endif()
 
 # On Windows, put the libtorch DLLs next to the Standalone .exe so it runs as-is.
+# On macOS, libtorch travels inside each bundle (Contents/Frameworks), so the
+# plugin works on its own with nothing else installed.
+if(APPLE)
+    target_link_options(Sediments INTERFACE "-Wl,-rpath,@loader_path/../Frameworks")
+    file(GLOB LT_TORCH_DYLIBS "${LT_TORCH_LIB_DIR}/*.dylib")
+    foreach(fmt VST3 AU Standalone)
+        if(TARGET Sediments_${fmt})
+            add_custom_command(TARGET Sediments_${fmt} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_BUNDLE_CONTENT_DIR:Sediments_${fmt}>/Frameworks"
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different ${LT_TORCH_DYLIBS} "$<TARGET_BUNDLE_CONTENT_DIR:Sediments_${fmt}>/Frameworks"
+                COMMENT "Copying libtorch into the ${fmt} bundle")
+        endif()
+    endforeach()
+endif()
+
 if(WIN32)
     file(GLOB LT_TORCH_DLLS "${LT_TORCH_LIB_DIR}/*.dll")
     add_custom_command(TARGET Sediments_Standalone POST_BUILD
