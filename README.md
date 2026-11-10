@@ -128,7 +128,7 @@ Hors mode MIDI, le son est continu (drone) et suit X/Y comme avant.
 Le plugin est compilé automatiquement par GitHub à chaque mise à jour : plus besoin de Visual Studio ni de libtorch.
 
 1. Sur la page du dépôt, colonne de droite, ouvre **Releases** et prends la dernière version.
-2. Télécharge `Sediments-Windows.zip` ou `Sediments-macOS.zip` (Mac Apple Silicon : M1, M2, M3…).
+2. Télécharge `Sediments-Windows.zip` ou `Sediments-macOS.zip` (Mac Apple Silicon : M1, M2, M3…, macOS 14 Sonoma ou plus récent).
 3. Dézippe, puis suis le fichier `LISEZMOI.txt` : sous Windows, un double-clic sur `INSTALLER.bat` ; sur Mac, clic droit sur `Installer.command`, puis « Ouvrir ».
 
 Les toutes dernières versions de travail sont aussi dans l'onglet **Actions** (choisis la dernière exécution réussie, en bas de la page : « Artifacts »). Elles y restent 14 jours, et il faut être connecté à GitHub pour les télécharger.

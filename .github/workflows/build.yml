@@ -52,6 +52,16 @@ jobs:
       - name: Build
         run: cmake --build build --config Release --parallel --target Sediments_VST3 Sediments_Standalone
 
+      - name: Check that the plugin loads with libtorch
+        shell: python
+        run: |
+          import ctypes, os, glob
+          os.add_dll_directory(os.path.abspath("libtorch/lib"))
+          dll = glob.glob("build/Sediments_artefacts/Release/VST3/Sediments.vst3/Contents/x86_64-win/*.vst3")[0]
+          lib = ctypes.WinDLL(os.path.abspath(dll))
+          assert hasattr(lib, "GetPluginFactory"), "no VST3 entry point"
+          print("Loaded OK:", dll)
+
       - name: Package
         shell: pwsh
         run: |
@@ -99,10 +109,19 @@ jobs:
           cmake -B build -DCMAKE_BUILD_TYPE=Release
           -DCMAKE_PREFIX_PATH="$PWD/libtorch"
           -DCMAKE_OSX_ARCHITECTURES=arm64
-          -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0
+          -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0
 
       - name: Build
         run: cmake --build build --parallel --target Sediments_VST3 Sediments_AU Sediments_Standalone
+
+      - name: Check that the bundles load with their own libtorch
+        run: |
+          for b in build/Sediments_artefacts/Release/VST3/Sediments.vst3 build/Sediments_artefacts/Release/AU/Sediments.component; do
+            bin="$b/Contents/MacOS/Sediments"
+            otool -l "$bin" | grep -A2 LC_RPATH | grep path
+            ls "$b/Contents/Frameworks" | head -20
+            python3 -c "import ctypes,sys; ctypes.CDLL(sys.argv[1]); print('Loaded OK:', sys.argv[1])" "$bin"
+          done
 
       - name: Package
         run: |
