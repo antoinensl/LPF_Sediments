@@ -49,6 +49,7 @@ private:
         lt::MixStrip mix;
         lt::GesturePanel gesture;
         lt::KeysPanel keys;
+        lt::SpacePanel space;
         juce::Viewport sideViewport;
         juce::Component side;
         lt::SoundsCard sounds;

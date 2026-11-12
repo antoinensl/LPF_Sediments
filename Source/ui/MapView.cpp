@@ -97,6 +97,26 @@ void MapView::refresh()
         dotsDirty = true;
         rebuildContours();
         rebuildRegions();
+        rebuildHandles();
+    }
+    {
+        const bool show = mode == Mode::space && (int) proc.params.getRawParameterValue ("place")->load() == (int) Spatial::PlaceBy::eachSound;
+        for (auto* h : dirHandles)
+        {
+            h->setVisible (show);
+            if (show)
+            {
+                const auto c = roomPoint (h->direction(), 1.0f);
+                h->setBounds (juce::Rectangle<int> (34, 34).withCentre (c.roundToInt()));
+                if (colourOf != nullptr && corpus != nullptr && h->source < (int) corpus->sources.size())
+                {
+                    const auto& src = corpus->sources[(size_t) h->source];
+                    auto col = colourOf (src);
+                    const int sh = shapeOf ? shapeOf (src) : 0;
+                    if (col != h->colour || sh != h->shape) { h->colour = col; h->shape = sh; h->repaint(); }
+                }
+            }
+        }
     }
     shownPath = proc.engine.getPath();
 
@@ -289,7 +309,7 @@ void MapView::paint (juce::Graphics& g)
         g.drawImageAt (dots, 0, 0);
 
         // sound names
-        if (mode != Mode::keys && ! showZones())
+        if (mode != Mode::keys && mode != Mode::space && ! showZones())
             for (auto& r : regions)
             {
                 const auto& src = corpus->sources[(size_t) r.source];
@@ -326,6 +346,9 @@ void MapView::paint (juce::Graphics& g)
                 g.drawText (label, juce::Rectangle<float> (zx - 40.0f, zy - 11.0f, 80.0f, 22.0f), juce::Justification::centred);
             }
         }
+
+        if (mode == Mode::space)
+            paintSpace (g);
 
         // the recorded gesture
         auto drawLine = [&] (const std::vector<LatentEngine::PathPoint>& pts, float dx, float dy, juce::Colour c, float th)
@@ -608,5 +631,227 @@ void MapView::mouseMove (const juce::MouseEvent& e)
 void MapView::mouseExit (const juce::MouseEvent&)
 {
     if (hover >= 0) { hover = -1; repaint(); }
+}
+
+//==============================================================================
+// Space tab
+static constexpr float degToRad = 3.14159265358979f / 180.0f;
+
+juce::String describeDirection (float deg)
+{
+    static const char* names[] = { "Front", "Front right", "Right", "Back right", "Back", "Back left", "Left", "Front left" };
+    float d = std::fmod (deg + 360.0f, 360.0f);
+    const int sector = (int) std::floor ((d + 22.5f) / 45.0f) % 8;
+    int shown = juce::roundToInt (deg);
+    if (shown > 180) shown -= 360;
+    if (shown <= -180) shown += 360;
+    return juce::String (names[sector]) + ", " + juce::String (shown) + juce::String::fromUTF8 ("\xc2\xb0");
+}
+
+juce::Point<float> MapView::roomPoint (float az, float r) const
+{
+    const float W = (float) getWidth(), H = (float) getHeight();
+    return { W * (0.5f + 0.42f * r * std::sin (az * degToRad)), H * (0.5f - 0.42f * r * std::cos (az * degToRad)) };
+}
+
+float MapView::roomAngleAt (juce::Point<float> p) const
+{
+    const float dx = p.x / (float) juce::jmax (1, getWidth()) - 0.5f, dy = 0.5f - p.y / (float) juce::jmax (1, getHeight());
+    return std::atan2 (dx, dy) / degToRad;
+}
+
+void MapView::rebuildHandles()
+{
+    for (auto* h : dirHandles)
+        removeChildComponent (h);
+    dirHandles.clear();
+    if (corpus == nullptr)
+        return;
+    for (size_t i = 0; i < corpus->sources.size(); ++i)
+    {
+        const auto& src = corpus->sources[i];
+        if (src.path.empty())
+            continue;
+        auto name = juce::File::createFileWithoutCheckingPath (src.path).getFileNameWithoutExtension();
+        auto* h = dirHandles.add (new SoundDirHandle (proc, *this, (int) i, src.path, name));
+        addChildComponent (h);
+    }
+    cursor.toFront (false);
+}
+
+void MapView::paintSpace (juce::Graphics& g)
+{
+    auto& s = ui();
+    auto& t = s.theme();
+    const float W = (float) getWidth(), H = (float) getHeight();
+
+    // push the marks back so the room reads clearly
+    g.setColour (t.map.withAlpha (0.6f));
+    g.fillRect (getLocalBounds());
+
+    const auto fmt = Spatial::formatFor ((int) proc.params.getRawParameterValue ("output")->load(),
+                                         proc.params.getRawParameterValue ("ringStart")->load() > 0.5f);
+    const juce::Point<float> c (W * 0.5f, H * 0.5f);
+    const float rx = W * 0.42f, ry = H * 0.42f;
+    g.setColour (t.line);
+    g.drawEllipse (c.x - rx * 0.5f, c.y - ry * 0.5f, rx, ry, 1.0f);
+    g.setColour (t.muted.withAlpha (0.8f));
+    g.drawEllipse (c.x - rx, c.y - ry, rx * 2.0f, ry * 2.0f, 1.5f);
+    g.drawLine (c.x - 6.0f, c.y, c.x + 6.0f, c.y, 1.0f);
+    g.drawLine (c.x, c.y - 6.0f, c.x, c.y + 6.0f, 1.0f);
+
+    g.setFont (s.font (12.5f, true));
+    auto label = [&] (const juce::String& text, juce::Point<float> at)
+    {
+        const float tw = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), text) + 16.0f;
+        auto r = juce::Rectangle<float> (tw, 22.0f).withCentre (at);
+        r.setX (juce::jlimit (4.0f, W - tw - 4.0f, r.getX()));
+        r.setY (juce::jlimit (4.0f, H - 26.0f, r.getY()));
+        g.setColour (t.panel.withAlpha (0.92f));
+        g.fillRoundedRectangle (r, 11.0f);
+        g.setColour (t.line);
+        g.drawRoundedRectangle (r.reduced (0.5f), 11.0f, 1.0f);
+        g.setColour (t.fg);
+        g.drawText (text, r, juce::Justification::centred);
+    };
+
+    // where the last grains were heard (fading), and the model voice
+    const auto now = juce::Time::getMillisecondCounter();
+    const bool ambi = fmt.kind == Spatial::Kind::ambisonics;
+    for (auto& m : proc.engine.grainMarks)
+    {
+        const int src = m.source.load();
+        const auto age = (float) (now - m.when.load());
+        if (src < 0 || age > 1500.0f || corpus == nullptr || src >= (int) corpus->sources.size())
+            continue;
+        const float el = ambi ? m.el.load() : 0.0f;
+        const float r = m.dist.load() * std::cos (el * degToRad);
+        const auto p = roomPoint (m.az.load(), r);
+        const float a = 1.0f - age / 1500.0f;
+        const float size = 7.0f + (ambi ? 5.0f * std::sin (juce::jmax (0.0f, el) * degToRad) : 0.0f);
+        auto col = colourOf ? colourOf (corpus->sources[(size_t) src]) : s.accent();
+        g.setColour (col.withAlpha (0.85f * a));
+        g.fillEllipse (p.x - size * 0.5f, p.y - size * 0.5f, size, size);
+    }
+    if (proc.engine.modelPlaceActive.load())
+    {
+        const float el = ambi ? proc.engine.modelEl.load() : 0.0f;
+        const auto p = roomPoint (proc.engine.modelAz.load(), proc.engine.modelDist.load() * std::cos (el * degToRad));
+        g.setColour (s.accent());
+        g.drawEllipse (p.x - 11.0f, p.y - 11.0f, 22.0f, 22.0f, 3.0f);
+    }
+
+    // loudspeakers
+    auto speaker = [&] (const juce::String& text, float az)
+    {
+        const auto p = roomPoint (az, 1.0f);
+        auto r = juce::Rectangle<float> (26.0f, 26.0f).withCentre (p);
+        g.setColour (t.panel);
+        g.fillRoundedRectangle (r, 7.0f);
+        g.setColour (t.fg);
+        g.drawRoundedRectangle (r.reduced (0.75f), 7.0f, 1.5f);
+        g.setFont (s.font (12.5f, true));
+        g.drawText (text, r, juce::Justification::centred);
+    };
+    if (fmt.kind == Spatial::Kind::ring)
+    {
+        label ("Front", roomPoint (0.0f, 1.0f).translated (0.0f, -26.0f));
+        for (int k = 0; k < fmt.channels; ++k)
+            speaker (juce::String (k + 1), fmt.speakerAngle (k));
+    }
+    else if (fmt.kind == Spatial::Kind::stereo)
+    {
+        label ("Front", roomPoint (0.0f, 1.0f).translated (0.0f, -26.0f));
+        speaker ("L", -90.0f);
+        speaker ("R", 90.0f);
+    }
+    else
+    {
+        label ("Front", roomPoint (0.0f, 1.0f).translated (0.0f, -20.0f));
+        label ("Back", roomPoint (180.0f, 1.0f).translated (0.0f, 20.0f));
+        label ("Left", roomPoint (-90.0f, 1.0f).translated (-10.0f, 0.0f));
+        label ("Right", roomPoint (90.0f, 1.0f).translated (10.0f, 0.0f));
+        if ((int) proc.params.getRawParameterValue ("height")->load() > 0)
+            label ("Above", c.translated (0.0f, -22.0f));
+    }
+
+}
+
+//==============================================================================
+SoundDirHandle::SoundDirHandle (SedimentsProcessor& p, MapView& m, int src, const juce::String& filePath, const juce::String& n)
+    : source (src), path (filePath), name (n), proc (p), map (m)
+{
+    setWantsKeyboardFocus (true);
+    setTitle (name + " direction");
+    setDescription ("Drag around the circle, or use the arrow keys (Shift for fine steps).");
+    setMouseCursor (juce::MouseCursor::DraggingHandCursor);
+}
+
+float SoundDirHandle::direction() const
+{
+    auto it = proc.soundDirections.find (path);
+    if (it != proc.soundDirections.end())
+        return it->second;
+    auto c = map.getCorpus();
+    return Spatial::defaultSoundAz (source, c != nullptr ? (int) c->sources.size() : 1);
+}
+
+void SoundDirHandle::setDirection (float deg)
+{
+    deg = std::fmod (deg + 540.0f, 360.0f) - 180.0f;
+    proc.setSoundDirection (path, deg);
+    setTooltip (name + ": " + describeDirection (deg));
+    if (auto* h = getAccessibilityHandler())
+        h->notifyAccessibilityEvent (juce::AccessibilityEvent::valueChanged);
+    map.refresh();
+}
+
+void SoundDirHandle::paint (juce::Graphics& g)
+{
+    auto& s = ui();
+    auto b = getLocalBounds().toFloat().reduced (4.0f);
+    g.setColour (s.theme().panel);
+    g.fillEllipse (b);
+    g.setColour (colour);
+    g.drawEllipse (b.reduced (1.5f), 3.0f);
+    drawGlyph (g, shape, b.getCentre(), 10.0f, colour);
+    if (hasKeyboardFocus (false))
+    {
+        g.setColour (s.theme().focus);
+        g.drawEllipse (getLocalBounds().toFloat().reduced (1.0f), 2.5f);
+    }
+}
+
+void SoundDirHandle::mouseDown (const juce::MouseEvent& e) { mouseDrag (e); }
+
+void SoundDirHandle::mouseDrag (const juce::MouseEvent& e)
+{
+    float a = map.roomAngleAt (e.getEventRelativeTo (&map).position);
+    if (e.mods.isShiftDown())
+        a = 15.0f * std::round (a / 15.0f);
+    setDirection (a);
+}
+
+bool SoundDirHandle::keyPressed (const juce::KeyPress& k)
+{
+    const float step = k.getModifiers().isShiftDown() ? 1.0f : 15.0f;
+    if (k.isKeyCode (juce::KeyPress::rightKey) || k.isKeyCode (juce::KeyPress::upKey))   { setDirection (direction() + step); return true; }
+    if (k.isKeyCode (juce::KeyPress::leftKey)  || k.isKeyCode (juce::KeyPress::downKey)) { setDirection (direction() - step); return true; }
+    if (k.isKeyCode (juce::KeyPress::homeKey)) { setDirection (0.0f); return true; }
+    return false;
+}
+
+std::unique_ptr<juce::AccessibilityHandler> SoundDirHandle::createAccessibilityHandler()
+{
+    struct Value : public juce::AccessibilityTextValueInterface
+    {
+        explicit Value (SoundDirHandle& h) : owner (h) {}
+        bool isReadOnly() const override { return true; }
+        juce::String getCurrentValueAsString() const override { return describeDirection (owner.direction()); }
+        void setValueAsString (const juce::String&) override {}
+        SoundDirHandle& owner;
+    };
+    return std::make_unique<juce::AccessibilityHandler> (*this, juce::AccessibilityRole::slider, juce::AccessibilityActions{},
+                                                         juce::AccessibilityHandler::Interfaces { std::make_unique<Value> (*this) });
 }
 }

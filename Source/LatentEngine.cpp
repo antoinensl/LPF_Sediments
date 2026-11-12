@@ -136,6 +136,7 @@ void LatentEngine::render (juce::AudioBuffer<float>& buffer, int numSamples, flo
         if (lock.isLocked() && audition != nullptr && ! audition->finished.load())
         {
             auto& clip = *audition;
+            const bool ambisonic = outputChoice.load() >= 9;
             const int n = juce::jmin (numSamples, clip.buffer.getNumSamples() - clip.pos);
             for (int i = 0; i < n; ++i)
             {
@@ -145,8 +146,14 @@ void LatentEngine::render (juce::AudioBuffer<float>& buffer, int numSamples, flo
                     if (clip.stopGain <= 0.0f) { clip.finished = true; break; }
                 }
                 const float g = gain * clip.stopGain;
-                for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
-                    buffer.getWritePointer (ch)[i] += g * clip.buffer.getSample (juce::jmin (ch, 1), clip.pos + i);
+                const float l = clip.buffer.getSample (0, clip.pos + i), r = clip.buffer.getSample (1, clip.pos + i);
+                if (ambisonic || buffer.getNumChannels() == 1)
+                    buffer.getWritePointer (0)[i] += g * 0.5f * (l + r);
+                else
+                {
+                    buffer.getWritePointer (0)[i] += g * l;
+                    buffer.getWritePointer (1)[i] += g * r;
+                }
             }
             clip.pos += n;
             if (clip.pos >= clip.buffer.getNumSamples())
@@ -160,13 +167,35 @@ void LatentEngine::render (juce::AudioBuffer<float>& buffer, int numSamples, flo
 
     int s1, n1, s2, n2;
     fifo.prepareToRead (toRead, s1, n1, s2, n2);
-    for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+    const int chans = juce::jmin (buffer.getNumChannels(), Spatial::maxChannels);
+    for (int ch = 0; ch < chans; ++ch)
     {
-        const int src = juce::jmin (ch, 1);
-        if (n1 > 0) buffer.addFrom (ch, 0, fifoBuffer, src, s1, n1, gain);
-        if (n2 > 0) buffer.addFrom (ch, n1, fifoBuffer, src, s2, n2, gain);
+        if (n1 > 0) buffer.addFrom (ch, 0, fifoBuffer, ch, s1, n1, gain);
+        if (n2 > 0) buffer.addFrom (ch, n1, fifoBuffer, ch, s2, n2, gain);
     }
     fifo.finishedRead (n1 + n2);
+}
+
+void LatentEngine::setSoundDirections (const std::map<juce::String, float>& directions)
+{
+    {
+        std::lock_guard<std::mutex> lock (snapMutex);
+        soundDirections = directions;
+    }
+    ++soundDirVersion;
+}
+
+void LatentEngine::publishGrain (const Spatial::Place& p, int source) noexcept
+{
+    auto& m = grainMarks[(grainMarkNext++ & 0x7fffffff) % numGrainMarks];
+    m.az = p.az; m.el = p.el; m.dist = p.dist; m.source = source;
+    m.when = juce::Time::getMillisecondCounter();
+}
+
+void LatentEngine::publishModelPlace (const Spatial::Place& p) noexcept
+{
+    modelAz = p.az; modelEl = p.el; modelDist = p.dist;
+    modelPlaceActive = true;
 }
 
 //==============================================================================
@@ -359,7 +388,14 @@ void LatentEngine::workerLoop()
 
     // Originals (concatenative) state
     GrainPlayer grainPlayer;
-    std::vector<float> origL, origR;
+    std::vector<float> origBuf, mixBuf;
+    Spatial::Placer placer;
+    const Corpus* placerCorpus = nullptr;
+    int placerDirVersion = -1;
+    float rotationDeg = 0.0f;
+    float prevGl[Spatial::maxChannels] = {}, prevGr[Spatial::maxChannels] = {};
+    bool modelGainsValid = false;
+    int modelChannels = 1;
     float gx = -1.0f, gy = -1.0f;      // glided position for grain picking
 
     while (running.load())
@@ -610,6 +646,7 @@ void LatentEngine::workerLoop()
         if (audio.empty())
             continue;
 
+        modelChannels = (int) audio.size();
         for (int c = 0; c < 2; ++c)
         {
             const auto& src = audio[(size_t) juce::jmin (c, (int) audio.size() - 1)];
@@ -646,7 +683,70 @@ void LatentEngine::workerLoop()
             resampled.assign ((size_t) produced * 2, 0.0f);
         }
 
-        // 4b. Original sounds: grains of the moments around the cursor.
+        // 4b. Space: where the model voice and each grain are heard.
+        const auto fmt = Spatial::formatFor (outputChoice.load(), frontCentre.load());
+        {
+            if (placerCorpus != corp.get())
+            {
+                placerCorpus = corp.get();
+                placer.prepare (*corp);
+                placerDirVersion = -1;
+            }
+            const int dv = soundDirVersion.load();
+            if (dv != placerDirVersion)
+            {
+                placerDirVersion = dv;
+                std::lock_guard<std::mutex> lock (snapMutex);
+                placer.soundAz.resize (corp->sources.size());
+                for (size_t s = 0; s < corp->sources.size(); ++s)
+                {
+                    auto it = soundDirections.find (juce::String (corp->sources[s].path));
+                    placer.soundAz[s] = it != soundDirections.end() ? it->second
+                                                                    : Spatial::defaultSoundAz ((int) s, (int) corp->sources.size());
+                }
+            }
+            placer.by = (Spatial::PlaceBy) juce::jlimit (0, 6, placeBy.load());
+            placer.height = (Spatial::Height) juce::jlimit (0, 5, heightMode.load());
+            placer.width = juce::jlimit (0.0f, 1.0f, spaceWidth.load());
+            placer.scatter = juce::jlimit (0.0f, 1.0f, scatter.load());
+            rotationDeg = (float) std::fmod (rotationDeg + rotateSpeed.load() * 360.0 * frameSeconds, 360.0);
+            placer.rotation = rotationDeg;
+        }
+
+        constexpr int NC = Spatial::maxChannels;
+        mixBuf.assign ((size_t) produced * NC, 0.0f);
+        if (useModel && produced > 0)
+        {
+            const auto place = placer.placeAt (*corp, px, py);
+            float gl[NC], gr[NC];
+            Spatial::gains (fmt, place, modelChannels > 1, gl, gr);
+            if (! modelGainsValid) { std::copy (gl, gl + NC, prevGl); std::copy (gr, gr + NC, prevGr); modelGainsValid = true; }
+            publishModelPlace (place);
+            const float* l = resampled.data();
+            const float* r = resampled.data() + produced;
+            const float amount = 1.0f - srcMix;
+            for (int c = 0; c < fmt.channels; ++c)
+            {
+                float* o = mixBuf.data() + (size_t) c * (size_t) produced;
+                const float a0 = prevGl[c], a1 = gl[c], b0 = prevGr[c], b1 = gr[c];
+                if (a0 == 0.0f && a1 == 0.0f && b0 == 0.0f && b1 == 0.0f)
+                    continue;
+                for (int i = 0; i < produced; ++i)
+                {
+                    const float t = (float) (i + 1) / (float) produced;
+                    o[i] = amount * ((a0 + t * (a1 - a0)) * l[i] + (b0 + t * (b1 - b0)) * r[i]);
+                }
+            }
+            std::copy (gl, gl + NC, prevGl);
+            std::copy (gr, gr + NC, prevGr);
+        }
+        else
+        {
+            modelGainsValid = false;
+            modelPlaceActive = false;
+        }
+
+        // 4c. Original sounds: grains of the moments around the cursor.
         if (useOriginals && produced > 0)
         {
             const float g = glide.load();
@@ -663,34 +763,28 @@ void LatentEngine::workerLoop()
             gp.flowSpeed = juce::jlimit (0.05f, 8.0f, flowSpeed.load());
             gp.grainMs = juce::jlimit (10.0f, 1000.0f, grainMs.load());
             gp.leash = juce::jmax (0.04f, 1.5f * gp.sigma);
-            origL.assign ((size_t) produced, 0.0f);
-            origR.assign ((size_t) produced, 0.0f);
-            grainPlayer.render (origL.data(), origR.data(), produced, hostRate, *corp, gp, rnd);
-            float* l = resampled.data();
-            float* r = resampled.data() + produced;
-            for (int i = 0; i < produced; ++i)
-            {
-                l[i] = (1.0f - srcMix) * l[i] + srcMix * origL[(size_t) i];
-                r[i] = (1.0f - srcMix) * r[i] + srcMix * origR[(size_t) i];
-            }
+            gp.format = fmt;
+            gp.placer = &placer;
+            gp.onGrain = [this] (const Spatial::Place& pl, int source) { publishGrain (pl, source); };
+            origBuf.assign ((size_t) produced * NC, 0.0f);
+            float* outs[NC];
+            for (int c = 0; c < NC; ++c)
+                outs[c] = origBuf.data() + (size_t) c * (size_t) produced;
+            grainPlayer.render (outs, fmt.channels, produced, hostRate, *corp, gp, rnd);
+            for (size_t i = 0; i < (size_t) fmt.channels * (size_t) produced; ++i)
+                mixBuf[i] += srcMix * origBuf[i];
         }
-        else if (useModel && srcMix > 0.0f)
-        {
-            for (auto& v : resampled) v *= (1.0f - srcMix);
-        }
-        if (! useOriginals)
+        else
             gx = gy = -1.0f;
 
         // 5. MIDI mode: the note envelope gates the sound.
         if (midi)
         {
-            float* l = resampled.data();
-            float* r = resampled.data() + produced;
             for (int i = 0; i < produced; ++i)
             {
                 const float g = env.getNextSample() * noteGain;
-                l[i] *= g;
-                r[i] *= g;
+                for (int c = 0; c < fmt.channels; ++c)
+                    mixBuf[(size_t) c * (size_t) produced + (size_t) i] *= g;
             }
         }
         else if (env.isActive())
@@ -705,9 +799,9 @@ void LatentEngine::workerLoop()
             const int n = juce::jmin (space, produced - offset);
             int s1, n1, s2, n2;
             fifo.prepareToWrite (n, s1, n1, s2, n2);
-            for (int c = 0; c < 2; ++c)
+            for (int c = 0; c < NC; ++c)
             {
-                const float* src = resampled.data() + c * produced + offset;
+                const float* src = mixBuf.data() + (size_t) c * (size_t) produced + (size_t) offset;
                 if (n1 > 0) fifoBuffer.copyFrom (c, s1, src, n1);
                 if (n2 > 0) fifoBuffer.copyFrom (c, s2, src + n1, n2);
             }
@@ -1034,6 +1128,7 @@ bool LatentEngine::encodeFile (RaveModel* enc, const juce::File& file, Corpus& i
     {
         auto a = std::make_shared<SourceAudio>();
         a->rate = reader->sampleRate;
+        a->stereo = buf.getNumChannels() > 1;
         a->left.assign (buf.getReadPointer (0), buf.getReadPointer (0) + len);
         a->right.assign (buf.getReadPointer (juce::jmin (1, buf.getNumChannels() - 1)), buf.getReadPointer (juce::jmin (1, buf.getNumChannels() - 1)) + len);
         if (into.audio.size() < into.sources.size())

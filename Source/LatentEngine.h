@@ -14,6 +14,7 @@
 #include "RaveModel.h"
 #include "LearnedTerrain.h"
 #include "GrainPlayer.h"
+#include "Spatial.h"
 
 // Everything that isn't UI or plugin plumbing:
 //  - an import thread that loads models and encodes dropped files into the corpus,
@@ -49,6 +50,21 @@ public:
     // Original sounds (concatenative playback): 0 = all model, 1 = all originals.
     // Without a model, the originals are always what plays.
     std::atomic<float> sourceMix { 0.0f }, grainMs { 120.0f };
+
+    // Space: output format (see Spatial::outputNames) and how grains are placed.
+    std::atomic<int>   outputChoice { 0 }, placeBy { 0 }, heightMode { 0 };
+    std::atomic<bool>  frontCentre { false };
+    std::atomic<float> spaceWidth { 1.0f }, scatter { 0.0f }, rotateSpeed { 0.0f };   // rotation in turns per second
+    std::atomic<int>   hostOutputChannels { 2 };    // what the host gives us
+    // Per-sound direction (degrees, 0 = front, clockwise) for "Each sound".
+    void setSoundDirections (const std::map<juce::String, float>& directions);
+
+    // Recent grain places, for the display (written by the synthesis thread).
+    struct GrainMark { std::atomic<float> az { 0 }, el { 0 }, dist { 0 }; std::atomic<int> source { -1 }; std::atomic<juce::uint32> when { 0 }; };
+    static constexpr int numGrainMarks = 64;
+    GrainMark grainMarks[numGrainMarks];
+    std::atomic<float> modelAz { 0 }, modelEl { 0 }, modelDist { 0 };
+    std::atomic<bool>  modelPlaceActive { false };
 
     // Where the sound actually is right now (after path / MIDI), for the UI.
     std::atomic<float> curX { 0.5f }, curY { 0.5f }, baseX { 0.5f }, baseY { 0.5f };
@@ -192,10 +208,17 @@ private:
     void startWorker();
     void stopWorker();
 
-    // FIFO between synthesis thread and audio thread (2 channels, host rate)
-    static constexpr int fifoCapacity = 1 << 16;
+    // FIFO between synthesis thread and audio thread (up to 16 channels, host rate)
+    static constexpr int fifoCapacity = 1 << 15;
     juce::AbstractFifo fifo { fifoCapacity };
-    juce::AudioBuffer<float> fifoBuffer { 2, fifoCapacity };
+    juce::AudioBuffer<float> fifoBuffer { Spatial::maxChannels, fifoCapacity };
+
+    // Space
+    std::map<juce::String, float> soundDirections;   // guarded by snapMutex
+    std::atomic<int> soundDirVersion { 0 };
+    std::atomic<int> grainMarkNext { 0 };
+    void publishGrain (const Spatial::Place&, int source) noexcept;
+    void publishModelPlace (const Spatial::Place&) noexcept;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (LatentEngine)
 };

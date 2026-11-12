@@ -17,7 +17,7 @@ static bool looksLikeError (const juce::String& st)
 //==============================================================================
 SedimentsEditor::Content::Content (SedimentsEditor& o, SedimentsProcessor& p)
     : owner (o), proc (p),
-      top (p, actions), modes (actions), map (p), mix (p, actions), gesture (p, map), keys (p),
+      top (p, actions), modes (actions), map (p), mix (p, actions), gesture (p, map), keys (p), space (p),
       sounds (p, actions), shape (p), welcome (p, actions), settingsPanel (p)
 {
     setTitle ("Sediments");
@@ -41,7 +41,7 @@ SedimentsEditor::Content::Content (SedimentsEditor& o, SedimentsProcessor& p)
     map.shapeOf = actions.shapeOf;
 
     for (auto* c : { (juce::Component*) &top, (juce::Component*) &modes, (juce::Component*) &map, (juce::Component*) &mix,
-                     (juce::Component*) &gesture, (juce::Component*) &keys, (juce::Component*) &sideViewport,
+                     (juce::Component*) &gesture, (juce::Component*) &keys, (juce::Component*) &space, (juce::Component*) &sideViewport,
                      (juce::Component*) &welcome, (juce::Component*) &banner, (juce::Component*) &layoutButton })
         addAndMakeVisible (c);
     layoutButton.setTooltip ("Choose how the map is laid out: by similarity, or by pitch, brightness, noisiness or loudness");
@@ -95,6 +95,7 @@ void SedimentsEditor::Content::resized()
     mix.setVisible (! welcomeShown && mode == Mode::explore);
     gesture.setVisible (! welcomeShown && mode == Mode::gesture);
     keys.setVisible (! welcomeShown && mode == Mode::keys);
+    space.setVisible (! welcomeShown && mode == Mode::space);
 
     if (welcomeShown)
     {
@@ -115,6 +116,7 @@ void SedimentsEditor::Content::resized()
     if (mode == Mode::explore) { panel = &mix; panelH = 64; }
     if (mode == Mode::gesture) { panel = &gesture; panelH = gesture.preferredHeight (body.getWidth()); }
     if (mode == Mode::keys)    { panel = &keys; panelH = keys.preferredHeight (body.getWidth()); }
+    if (mode == Mode::space)   { panel = &space; panelH = space.preferredHeight (body.getWidth()); }
     if (panel != nullptr)
     {
         panel->setBounds (body.removeFromBottom (panelH));
@@ -140,6 +142,7 @@ bool SedimentsEditor::Content::keyPressed (const juce::KeyPress& k)
     if (ch == '1') { owner.setUiMode (0); return true; }
     if (ch == '2') { owner.setUiMode (1); return true; }
     if (ch == '3') { owner.setUiMode (2); return true; }
+    if (ch == '4') { owner.setUiMode (3); return true; }
     if (ch == 'r' || ch == 'R')
     {
         owner.setUiMode (1);
@@ -166,7 +169,7 @@ SedimentsEditor::SedimentsEditor (SedimentsProcessor& p)
     addAndMakeVisible (*content);
     tooltips = std::make_unique<juce::TooltipWindow> (content.get(), 700);
 
-    content->mode = (Mode) juce::jlimit (0, 2, proc.uiMode);
+    content->mode = (Mode) juce::jlimit (0, 3, proc.uiMode);
     content->modes.setMode (content->mode);
     content->map.setMode (content->mode);
 
@@ -217,7 +220,7 @@ void SedimentsEditor::resized()
 
 void SedimentsEditor::setUiMode (int m)
 {
-    content->mode = (Mode) juce::jlimit (0, 2, m);
+    content->mode = (Mode) juce::jlimit (0, 3, m);
     proc.uiMode = (int) content->mode;
     content->modes.setMode (content->mode);
     content->map.setMode (content->mode);
@@ -293,6 +296,8 @@ void SedimentsEditor::timerCallback()
         c.mix.refresh (c.map.getCorpus());
         c.gesture.refresh();
         c.keys.refresh();
+        if (c.mode == Mode::space)
+            c.space.refresh();
         c.shape.refresh();
         c.sounds.refresh (corpus);
         const int lay = e.getLayoutX() * 10 + e.getLayoutY();

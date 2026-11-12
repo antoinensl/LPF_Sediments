@@ -37,6 +37,12 @@ public:
 
     // Interface state saved with the project (message thread only)
     std::map<juce::String, juce::Colour> soundColours;   // custom colour per file
+    std::map<juce::String, float> soundDirections;        // direction per file (degrees), "Each sound"
+    void setSoundDirection (const juce::String& path, float degrees)
+    {
+        soundDirections[path] = degrees;
+        engine.setSoundDirections (soundDirections);
+    }
     int uiMode = 0;                                       // 0 explore, 1 gesture, 2 keys
     int uiWidth = 1180, uiHeight = 780;                   // window size at 100 % text
 

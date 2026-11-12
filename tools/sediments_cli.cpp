@@ -36,6 +36,14 @@ int main (int argc, char** argv)
     if (auto* v = std::getenv ("LT_SOURCE")) engine.sourceMix = (float) std::atof (v);
     if (auto* v = std::getenv ("LT_FLOW")) engine.flow = (float) std::atof (v);
     if (auto* v = std::getenv ("LT_LAYOUT")) { const auto xy = juce::StringArray::fromTokens (v, ",", ""); engine.setLayoutAxesAsync (xy[0].getIntValue(), xy[1].getIntValue()); }
+    // Space: LT_OUTPUT (index of Spatial::outputNames), LT_PLACE, LT_HEIGHT, LT_SCATTER, LT_ROTATE, LT_WIDTH
+    if (auto* v = std::getenv ("LT_OUTPUT"))  engine.outputChoice = std::atoi (v);
+    if (auto* v = std::getenv ("LT_PLACE"))   engine.placeBy = std::atoi (v);
+    if (auto* v = std::getenv ("LT_HEIGHT"))  engine.heightMode = std::atoi (v);
+    if (auto* v = std::getenv ("LT_SCATTER")) engine.scatter = (float) std::atof (v);
+    if (auto* v = std::getenv ("LT_ROTATE"))  engine.rotateSpeed = (float) std::atof (v);
+    if (auto* v = std::getenv ("LT_WIDTH"))   engine.spaceWidth = (float) std::atof (v);
+    const int numCh = Spatial::formatFor (engine.outputChoice.load(), false).channels;
     engine.addFilesAsync (inputs);
 
     while (engine.isBusy())
@@ -84,9 +92,9 @@ int main (int argc, char** argv)
 
     // Render 10 s, moving in a circle, in real-time-sized blocks.
     const int total = (int) (hostRate * 10);
-    juce::AudioBuffer<float> out (2, total);
+    juce::AudioBuffer<float> out (numCh, total);
     out.clear();
-    juce::AudioBuffer<float> blk (2, block);
+    juce::AudioBuffer<float> blk (numCh, block);
     int underruns = 0;
     auto t0 = std::chrono::steady_clock::now();
     // LT_TEST selects a scenario: "midi", "path", "flow", "static" (default: circular walk)
@@ -151,7 +159,7 @@ int main (int argc, char** argv)
         if (blk.getMagnitude (0, block) == 0.0f && pos > hostRate * 0.5 && test != "midi")
             ++underruns;
         const int n = juce::jmin (block, total - pos);
-        for (int c = 0; c < 2; ++c)
+        for (int c = 0; c < numCh; ++c)
             out.copyFrom (c, pos, blk, c, 0, n);
         std::fprintf (trace, "%f,%f,%f,%d,%f\n", t, engine.curX.load(), engine.curY.load(), engine.activeZone.load(), engine.pathPhase.load());
     }
@@ -160,7 +168,7 @@ int main (int argc, char** argv)
     juce::File outFile = juce::File::getCurrentWorkingDirectory().getChildFile (argv[2]);
     outFile.deleteFile();
     juce::WavAudioFormat wav;
-    std::unique_ptr<juce::AudioFormatWriter> w (wav.createWriterFor (new juce::FileOutputStream (outFile), hostRate, 2, 24, {}, 0));
+    std::unique_ptr<juce::AudioFormatWriter> w (wav.createWriterFor (new juce::FileOutputStream (outFile), hostRate, (unsigned int) numCh, 24, {}, 0));
     w->writeFromAudioSampleBuffer (out, 0, total);
     w.reset();
 

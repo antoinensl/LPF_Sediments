@@ -11,6 +11,7 @@ struct SourceAudio
 {
     std::vector<float> left, right;   // same length; mono files are duplicated
     double rate = 44100.0;
+    bool stereo = false;              // the two channels really differ
     int length() const noexcept { return (int) left.size(); }
 };
 

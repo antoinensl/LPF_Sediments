@@ -123,6 +123,44 @@ namespace lt
     };
 
     //==========================================================================
+    // A button that shows a choice parameter's value and opens a menu of its options.
+    class ChoiceButton : public LtButton
+    {
+    public:
+        ChoiceButton (juce::RangedAudioParameter& param, const juce::String& title);
+        void update();
+        std::function<juce::String (int, const juce::String&)> menuSection;   // optional header before option i
+    private:
+        juce::RangedAudioParameter& param;
+        juce::String title;
+        std::unique_ptr<juce::ParameterAttachment> attachment;
+        int shown = -1;
+    };
+
+    // Space tab: output format and how grains are placed in the room.
+    class SpacePanel : public juce::Component
+    {
+    public:
+        explicit SpacePanel (SedimentsProcessor&);
+        void refresh();
+        int preferredHeight (int width);
+        void paint (juce::Graphics&) override;
+        void resized() override;
+    private:
+        SedimentsProcessor& proc;
+        ChoiceButton output, place, height;
+        Segmented ringStart;
+        LabeledSlider width, scatter, rotate;
+        LtButton evenly { "Spread evenly", "compass" };
+        LabeledGroup outputGroup, placeGroup, heightGroup, ringGroup;
+        juce::Component evenlyBox;
+        juce::String note;
+        bool warning = false;
+        int noteHeight (int width) const;
+        std::vector<FlowItem> items();
+    };
+
+    //==========================================================================
     class SoundRow : public juce::Component
     {
     public:

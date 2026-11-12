@@ -86,13 +86,20 @@ void GrainPlayer::startGrain (const Corpus& c, const Params& p, double hostRate,
     g.step = g.audio->rate / hostRate;
     g.pos = t * g.audio->rate;
     g.length = juce::jmax (64, (int) (p.grainMs * 0.001 * hostRate));
+    Spatial::Place place;
+    if (p.placer != nullptr)
+        place = p.placer->placeUnit (c, unit, &rnd);
+    Spatial::gains (p.format, place, g.audio->stereo, g.gl, g.gr);
+    if (p.onGrain)
+        p.onGrain (place, c.sourceIndex[(size_t) unit]);
     grains.push_back (std::move (g));
 }
 
-void GrainPlayer::render (float* left, float* right, int n, double hostRate, const Corpus& c, const Params& p, juce::Random& rnd)
+void GrainPlayer::render (float* const* outs, int numChannels, int n, double hostRate, const Corpus& c, const Params& p, juce::Random& rnd)
 {
     const int grainLen = juce::jmax (64, (int) (p.grainMs * 0.001 * hostRate));
     const int hop = juce::jmax (32, grainLen / 2);
+    const int nc = juce::jmin (numChannels, Spatial::maxChannels);
     int i = 0;
     while (i < n)
     {
@@ -114,8 +121,10 @@ void GrainPlayer::render (float* left, float* right, int n, double hostRate, con
                     continue;
                 const float f = (float) (g.pos - i0);
                 const float w = 0.5f - 0.5f * std::cos (juce::MathConstants<float>::twoPi * (float) g.age / (float) g.length);
-                left[i + k]  += w * (L[(size_t) i0] + f * (L[(size_t) i0 + 1] - L[(size_t) i0]));
-                right[i + k] += w * (R[(size_t) i0] + f * (R[(size_t) i0 + 1] - R[(size_t) i0]));
+                const float l = w * (L[(size_t) i0] + f * (L[(size_t) i0 + 1] - L[(size_t) i0]));
+                const float r = w * (R[(size_t) i0] + f * (R[(size_t) i0 + 1] - R[(size_t) i0]));
+                for (int c = 0; c < nc; ++c)
+                    outs[c][i + k] += g.gl[c] * l + g.gr[c] * r;
             }
         }
         grains.erase (std::remove_if (grains.begin(), grains.end(), [] (const Grain& g) { return g.age >= g.length; }), grains.end());

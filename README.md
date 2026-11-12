@@ -1,4 +1,4 @@
-# Sediments (prototype v0.8)
+# Sediments (prototype v0.9)
 
 [![Build](https://github.com/antoinensl/LPF_Sediments/actions/workflows/build.yml/badge.svg)](https://github.com/antoinensl/LPF_Sediments/actions/workflows/build.yml)
 
@@ -59,7 +59,7 @@ Double-click any slider to reset it.
 
 ## Playing: Explore, Gesture, Keys
 
-The three tabs (shortcuts **1**, **2**, **3**) are three ways of moving across the map.
+The first three tabs (shortcuts **1**, **2**, **3**) are three ways of moving across the map. The fourth, **Space** (shortcut **4**), spreads the sound over several speakers.
 
 ### Explore
 
@@ -94,6 +94,46 @@ To play: arm the plugin's track for recording and pick your MIDI keyboard as inp
 
 Outside MIDI mode the sound is continuous (a drone) and follows X/Y.
 
+## Space: multichannel and Ambisonics
+
+The **Space** tab sends the sound to more than two outputs. Each grain of your originals gets its own place in the room when it starts, so a texture can scatter all around the listener instead of coming from one point.
+
+![Space tab with 8 speakers](docs/screens/16_space_ring.png)
+
+### Output
+
+| Output | Channels | Use |
+|---|---|---|
+| **Stereo** | 2 | Grains are placed between left and right (the front/back part of a direction is folded). |
+| **4 to 16 speakers** | 4, 5, 6, 7, 8, 10, 12 or 16 | A ring of loudspeakers, evenly spaced, numbered clockwise. **Speaker 1** is either just left of the front (the first pair straddles the front, as in most quad and octophonic setups) or straight ahead. Each grain is panned between the two nearest speakers, at constant power. |
+| **Ambisonics 1st, 2nd, 3rd order** | 4, 9 or 16 | AmbiX format (ACN channel order, SN3D normalisation), with height. Decode it afterwards for any speaker layout, or for headphones with a binaural decoder (for example the free [IEM Plug-in Suite](https://plugins.iem.at/): BinauralDecoder, AllRADecoder). |
+
+The plugin has 16 outputs. **In Reaper, give the track enough channels**: click the track's **Routing** button, then set **Track channels** (8 for 8 speakers, 16 for 3rd-order Ambisonics; Reaper only offers even numbers, so 10 for 2nd order). On a stereo track only the first two outputs are heard. Then route the track to your speaker outputs, or put a decoder after the plugin.
+
+### Placing the grains
+
+| Place grains by | Where each grain goes |
+|---|---|
+| **Centre** | In the middle of the room: every speaker plays it equally. Raise Scatter to break it apart. |
+| **Map** | The map becomes a plan of the room, seen from above: its top is the front, its middle is the centre of the room. A grain is heard where its moment sits on the map, so moving the cursor, or playing a recorded gesture, moves the sound around you. |
+| **Each sound** | Every sound has its own direction, like musicians placed around the audience. Drag the coloured handles around the circle (or focus one and use the arrow keys, Shift for 1° steps). **Spread evenly** puts them back at even spacing. Directions are saved with the project. |
+| **Pitch, Brightness, Noisiness, Loudness** | The property turns the grains around the circle: low values on one side, high values on the other. With Width at 50 %, low is on the left and high on the right. |
+
+![Each sound placed by hand](docs/screens/17_space_each.png)
+
+| Control | Effect |
+|---|---|
+| **Width** | 100 % = all around; lower values gather the directions towards the front (does not change directions set by hand). |
+| **Scatter** | Random spread around the computed place: 0 = exact, 100 % = a grain can come from anywhere. Also lifts grains away from the centre. |
+| **Rotation** | Turns the whole scene, clockwise or anticlockwise, up to 60 turns a minute. |
+| **Height** (Ambisonics) | **Flat**, **Dome** (the middle of the map is right above you, its edges on the horizon), or **Pitch / Brightness / Noisiness / Loudness** (high values above, low values below). |
+
+With a model, the model's voice is a continuous sound, not grains: it moves as one source (following the cursor, the nearest sound or its properties) and Scatter does not apply to it. Turn **Source** towards your originals to scatter grains.
+
+In the Space tab, the map shows the room: the speakers (or Front, Back, Left, Right for Ambisonics), where the latest grains were heard (fading dots, in each sound's colour) and, as a ring, the model's voice.
+
+![Ambisonics, 3rd order, dome](docs/screens/18_space_ambisonics.png)
+
 ## Display and accessibility (Settings)
 
 These settings are saved on your computer, for every project.
@@ -111,7 +151,7 @@ These settings are saved on your computer, for every project.
 | **Calm motion** | No animation: the cursor jumps straight to its position. |
 | **Announce what you hear** | Screen readers announce which sounds are in the mix as you move. |
 
-Everything also works from the keyboard: **Tab** moves between controls, **arrows** move the cursor (Shift for fine steps), **Space** plays the nearest original moment, **R** records a gesture, **1 / 2 / 3** switch tabs, **?** opens the help, **Esc** closes a panel. In Reaper, if a shortcut is caught by Reaper instead of the plugin, enable **Send all keyboard input to plug-in** in the **+** menu of the FX window.
+Everything also works from the keyboard: **Tab** moves between controls, **arrows** move the cursor (Shift for fine steps), **Space** plays the nearest original moment, **R** records a gesture, **1 / 2 / 3 / 4** switch tabs, **?** opens the help, **Esc** closes a panel. In Reaper, if a shortcut is caught by Reaper instead of the plugin, enable **Send all keyboard input to plug-in** in the **+** menu of the FX window.
 
 ## RAVE models
 
@@ -185,6 +225,7 @@ The workflow in `.github/workflows/build.yml` builds Windows and macOS on every 
 
 - **Latency**: with a model, about two frames, i.e. ~90 to 120 ms with a 2048 ratio, including between a MIDI note and the sound. Fine for textures, gestures and slow phrases, not for tight percussive playing. Tempo-locked gestures stay in sync: the plugin compensates for its look-ahead. Originals alone: about 30 ms.
 - **Monophonic**: one voice at a time (one position on the map).
+- **Multichannel**: up to 16 outputs. The preview of an original moment (Shift-click) plays on outputs 1 and 2, or on the W channel in Ambisonics.
 - **Memory**: to replay the originals, files are kept in memory (about 23 MB per minute of 48 kHz stereo, 20 minutes at most per file).
 - **Pitch axis**: moments without a clear pitch (noises, textures) are placed in the middle of the Pitch axis.
 - **Layout**: it is recomputed whenever files are added or removed, so marks move around and the learned terrain is retrained (a few seconds).
@@ -206,17 +247,19 @@ The workflow in `.github/workflows/build.yml` builds Windows and macOS on every 
 | `Source/RaveModel.*` | TorchScript loading, `encode` / `decode` (the only file that includes libtorch besides the learned terrain). |
 | `Source/Corpus.*` | Corpus of frames, PCA or descriptor-axis layout, MIDI zones, blend of nearby frames (Gaussian interpolation). |
 | `Source/Analysis.*` | Audio descriptors: pitch (McLeod pitch method), brightness, noisiness, loudness. |
-| `Source/GrainPlayer.*` | Concatenative playback of the originals: windowed grains picked around the cursor, Flow. |
+| `Source/GrainPlayer.*` | Concatenative playback of the originals: windowed grains picked around the cursor, Flow, one place in space per grain. |
+| `Source/Spatial.*` | Output formats (stereo, rings of 4 to 16 speakers, AmbiX up to 3rd order), panning and Ambisonics encoding, grain placement. |
 | `Source/LearnedTerrain.*` | Learned terrain: coordinate network (Fourier features + MLP) trained on the CPU. |
 | `Source/LatentEngine.*` | Import thread (model, files), synthesis thread (terrain → RAVE and/or grains → resampling → FIFO), lock-free reading on the audio thread. |
 | `Source/PluginProcessor.*` | Parameters, MIDI, transport, audio routing, saved state. |
 | `Source/PluginEditor.*` | Interface assembly, scaling (text size), keyboard shortcuts, drag and drop. |
 | `Source/ui/UiCore.*` | Themes, colour palettes, contrast, bundled fonts, display settings, icons, button and slider drawing. |
 | `Source/ui/Widgets.*` | Labelled sliders, segmented choices, checkboxes with descriptions. |
-| `Source/ui/MapView.*` | The map: marks, contour lines, MIDI zones, gesture, keyboard-accessible cursor. |
-| `Source/ui/Panels.*` | Top bar, tabs, "You're hearing", Gesture and Keys panels, sound list, sound controls, welcome screen, map layout, settings, help. |
+| `Source/ui/MapView.*` | The map: marks, contour lines, MIDI zones, gesture, keyboard-accessible cursor, the room in the Space tab and per-sound direction handles. |
+| `Source/ui/Panels.*` | Top bar, tabs, "You're hearing", Gesture, Keys and Space panels, sound list, sound controls, welcome screen, map layout, settings, help. |
 | `Resources/fonts/` | Atkinson Hyperlegible and OpenDyslexic (SIL Open Font License, OFL files included). |
 | `packaging/` | Installers and read-me files shipped in the release zips. |
 | `tools/` | Test tools: fake RAVE model, command-line renderer, interface screenshots. |
 
 To build the test tools: `-DLT_BUILD_CLI=ON` and `-DLT_BUILD_SNAPSHOT=ON`. Example: `sediments_cli model.ts out.wav a.wav b.wav` renders a 10-second circular walk across the map (`none` instead of a model file plays the originals without a model).
+Multichannel renders: `LT_OUTPUT` (0 stereo, 1-8 rings of 4 to 16 speakers, 9-11 Ambisonics orders 1 to 3), `LT_PLACE` (0 centre … 6 loudness), `LT_HEIGHT`, `LT_SCATTER`, `LT_ROTATE`, `LT_WIDTH` write a WAV with as many channels as the format uses.

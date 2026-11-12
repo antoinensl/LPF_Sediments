@@ -194,9 +194,9 @@ void TopBar::resized()
 //==============================================================================
 ModeBar::ModeBar (EditorActions& a) : actions (a)
 {
-    const char* names[] = { "Explore", "Gesture", "Keys" };
-    const char* icons[] = { "compass", "gesture", "keys" };
-    for (int i = 0; i < 3; ++i)
+    const char* names[] = { "Explore", "Gesture", "Keys", "Space" };
+    const char* icons[] = { "compass", "gesture", "keys", "space" };
+    for (int i = 0; i < 4; ++i)
     {
         auto* b = tabs.add (new LtButton (names[i], icons[i], LtButton::Style::segment));
         b->setRadioGroupId (777);
@@ -233,7 +233,8 @@ void ModeBar::paint (juce::Graphics& g)
 
     const char* hints[] = { "Drag the cursor, or focus it and use the arrow keys",
                             "Press Record, then draw on the map",
-                            "Play from a MIDI keyboard, a MIDI item or the keys below" };
+                            "Play from a MIDI keyboard, a MIDI item or the keys below",
+                            "Spread the grains over several speakers or Ambisonics" };
     auto area = getLocalBounds().withTrimmedLeft ((int) seg.getRight() + 16);
     if (midiOn)
     {
@@ -514,6 +515,190 @@ void GesturePanel::resized()
         b->setBounds (x, 0, w, 44);
         x += w + 8;
     }
+}
+
+//==============================================================================
+ChoiceButton::ChoiceButton (juce::RangedAudioParameter& p, const juce::String& t)
+    : LtButton ({}, "chevronDown"), param (p), title (t)
+{
+    attachment = std::make_unique<juce::ParameterAttachment> (param, [this] (float) { update(); });
+    onClick = [this]
+    {
+        juce::PopupMenu menu;
+        const auto names = param.getAllValueStrings();
+        const int current = juce::roundToInt (param.convertFrom0to1 (param.getValue()));
+        for (int i = 0; i < names.size(); ++i)
+        {
+            if (menuSection)
+            {
+                auto head = menuSection (i, names[i]);
+                if (head.isNotEmpty()) menu.addSectionHeader (head);
+            }
+            menu.addItem (i + 1, names[i], true, i == current);
+        }
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMinimumWidth (getWidth()),
+                            [this] (int r) { if (r > 0) attachment->setValueAsCompleteGesture ((float) (r - 1)); });
+    };
+    update();
+}
+
+void ChoiceButton::update()
+{
+    const int v = juce::roundToInt (param.convertFrom0to1 (param.getValue()));
+    if (v == shown)
+        return;
+    shown = v;
+    const auto text = param.getAllValueStrings()[v];
+    setButtonText (text);
+    setTitle (title + ": " + text);
+    setTooltip (title + ": " + text + ". Click to change.");
+    if (auto* p = getParentComponent()) p->resized();
+}
+
+//==============================================================================
+SpacePanel::SpacePanel (SedimentsProcessor& p)
+    : proc (p),
+      output (*param (p, "output"), "Output"),
+      place (*param (p, "place"), "Place grains by"),
+      height (*param (p, "height"), "Height"),
+      ringStart ({ "Front left", "Front centre" }, "Speaker 1"),
+      width (param (p, "width"), "Width", "In front", "All around", [] (float v) { return pct (v); }),
+      scatter (param (p, "scatter"), "Scatter", "Exact", "Anywhere", [] (float v) { return pct (v); }),
+      rotate (param (p, "rotate"), "Rotation", "Anticlockwise", "Clockwise", [] (float v)
+      {
+          if (std::abs (v) < 0.002f) return juce::String ("Still");
+          const float rpm = std::abs (v) * 60.0f;
+          return juce::String (rpm, rpm < 10.0f ? 1 : 0) + " turns/min";
+      }),
+      outputGroup ("Output", output), placeGroup ("Place grains by", place), heightGroup ("Height (Ambisonics)", height),
+      ringGroup ("Speaker 1", ringStart)
+{
+    output.menuSection = [] (int i, const juce::String&) -> juce::String
+    {
+        if (i == 1) return "Ring of loudspeakers";
+        if (i == 9) return "Ambisonics (AmbiX)";
+        return {};
+    };
+    ringStart.attachToChoice (*param (p, "ringStart"));
+    evenly.setTooltip ("Put every sound back at an even spacing around the circle");
+    evenly.onClick = [this]
+    {
+        auto c = proc.engine.getCorpus();
+        if (c == nullptr) return;
+        proc.soundDirections.clear();
+        proc.engine.setSoundDirections (proc.soundDirections);
+    };
+    evenlyBox.addAndMakeVisible (evenly);
+    for (auto* c : { (juce::Component*) &outputGroup, (juce::Component*) &ringGroup, (juce::Component*) &placeGroup,
+                     (juce::Component*) &heightGroup, (juce::Component*) &width, (juce::Component*) &scatter,
+                     (juce::Component*) &rotate, (juce::Component*) &evenlyBox })
+        addAndMakeVisible (c);
+}
+
+void SpacePanel::refresh()
+{
+    output.update(); place.update(); height.update();
+    const int choice = (int) proc.params.getRawParameterValue ("output")->load();
+    const auto fmt = Spatial::formatFor (choice, false);
+    const auto by = (Spatial::PlaceBy) (int) proc.params.getRawParameterValue ("place")->load();
+    const bool ring = fmt.kind == Spatial::Kind::ring, ambi = fmt.kind == Spatial::Kind::ambisonics;
+    const bool each = by == Spatial::PlaceBy::eachSound;
+    bool relayout = ringGroup.isVisible() != ring || heightGroup.isVisible() != ambi || evenlyBox.isVisible() != each;
+    ringGroup.setVisible (ring);
+    heightGroup.setVisible (ambi);
+    evenlyBox.setVisible (each);
+    width.setEnabled (by != Spatial::PlaceBy::centre && ! each);
+
+    // What to know about this setting
+    juce::String n;
+    bool warn = false;
+    if (fmt.kind == Spatial::Kind::stereo)
+        n = "Grains are placed between left and right. Choose more speakers or Ambisonics to fill a room.";
+    else
+    {
+        const int need = fmt.channels, track = need + (need % 2);
+        const int host = proc.engine.hostOutputChannels.load();
+        if (host < need)
+        {
+            warn = true;
+            n = "This plugin only gets " + juce::String (host) + " outputs here, " + juce::String (need) + " are needed. ";
+        }
+        n << "Uses outputs 1 to " << need << ". In Reaper, give the track " << track
+          << " channels or more (Routing button on the track, then Track channels).";
+        if (ambi)
+            n << " AmbiX format: listen through a decoder after it, for example IEM BinauralDecoder on headphones.";
+    }
+    const bool modelOnly = proc.engine.getModelDescription().isNotEmpty() && ! proc.engine.isWithoutModel()
+                           && proc.params.getRawParameterValue ("source")->load() < 0.01f;
+    if (modelOnly)
+        n << " With Source on Model, the sound moves as one voice: turn Source towards your originals to scatter grains.";
+    else if (by == Spatial::PlaceBy::centre && proc.params.getRawParameterValue ("scatter")->load() < 0.01f && fmt.kind != Spatial::Kind::stereo)
+        n << " Every grain is in the middle of the room for now: raise Scatter, or choose how to place them.";
+    if (n != note || warn != warning)
+    {
+        note = n;
+        warning = warn;
+        relayout = true;
+    }
+    if (relayout)
+    {
+        if (auto* parent = getParentComponent()) parent->resized();
+        resized();
+    }
+    repaint();
+}
+
+std::vector<FlowItem> SpacePanel::items()
+{
+    std::vector<FlowItem> v;
+    v.push_back ({ &outputGroup, juce::jmax (200, output.idealWidth (44) + 8), 66, 20 });
+    if (ringGroup.isVisible()) v.push_back ({ &ringGroup, ringStart.preferredWidth(), 66, 20 });
+    v.push_back ({ &placeGroup, juce::jmax (170, place.idealWidth (44) + 8), 66, 20 });
+    if (heightGroup.isVisible()) v.push_back ({ &heightGroup, juce::jmax (170, height.idealWidth (44) + 8), 66, 20 });
+    if (evenlyBox.isVisible()) v.push_back ({ &evenlyBox, evenly.idealWidth (44), 66, 20 });
+    v.push_back ({ &width, 180, 66, 20 });
+    v.push_back ({ &scatter, 180, 66, 20 });
+    v.push_back ({ &rotate, 200, 66, 0 });
+    return v;
+}
+
+int SpacePanel::noteHeight (int w) const
+{
+    if (note.isEmpty()) return 0;
+    juce::AttributedString a;
+    a.append (note, ui().font (13.5f), ui().theme().muted);
+    juce::TextLayout tl;
+    tl.createLayout (a, (float) juce::jmax (100, w - 32 - 26));
+    return (int) std::ceil (tl.getHeight()) + 10;
+}
+
+int SpacePanel::preferredHeight (int w)
+{
+    return flowLayout (items(), { 16, 12, w - 32, 1000 }, 12, false) + 24 + noteHeight (w);
+}
+
+void SpacePanel::paint (juce::Graphics& g)
+{
+    paintCard (g, getLocalBounds().toFloat());
+    if (note.isEmpty())
+        return;
+    auto& s = ui();
+    const int nh = noteHeight (getWidth());
+    auto r = getLocalBounds().reduced (16, 12).removeFromBottom (nh - 6).toFloat();
+    Icons::draw (g, warning ? "x" : "help", r.removeFromLeft (18.0f).removeFromTop (18.0f), warning ? s.theme().rec : s.theme().muted, 2.0f);
+    r.removeFromLeft (8.0f);
+    juce::AttributedString a;
+    a.append (note, s.font (13.5f), warning ? s.theme().fg : s.theme().muted);
+    juce::TextLayout tl;
+    tl.createLayout (a, r.getWidth());
+    tl.draw (g, r);
+}
+
+void SpacePanel::resized()
+{
+    const int nh = noteHeight (getWidth());
+    flowLayout (items(), getLocalBounds().reduced (16, 12).withTrimmedBottom (nh), 12, true);
+    evenly.setBounds (0, 20, evenly.idealWidth (44), 44);
 }
 
 //==============================================================================
@@ -1487,6 +1672,7 @@ void HelpPanel::paint (juce::Graphics& g)
         { "Explore", "Move the cursor. Focus says how many neighbours blend, Terrain lets a learned surface fill the gaps, Flow lets sounds keep moving." },
         { "Gesture", "Record a movement on the map and loop it, freely or locked to your project's tempo." },
         { "Keys", "Each note name plays one zone of the map. Play from a MIDI keyboard, a MIDI item, or the on-screen keys." },
+        { "Space", "Spread the grains over 4 to 16 speakers or Ambisonics (up to 3rd order): by map position, per sound, by pitch or timbre, scattered or rotating." },
         { "Originals", "Without a model, or with Source turned up, your recordings themselves are played in small grains (concatenative synthesis). Grain size sets their length." },
         { "Tips", "Shift-click the map to hear an original moment. Double-click a slider to reset it. Drop files anywhere on the window." }
     };
@@ -1504,7 +1690,7 @@ void HelpPanel::paint (juce::Graphics& g)
 
 void HelpPanel::resized()
 {
-    card = getLocalBounds().withSizeKeepingCentre (juce::jmin (700, getWidth() - 40), juce::jmin (700, getHeight() - 40));
+    card = getLocalBounds().withSizeKeepingCentre (juce::jmin (720, getWidth() - 40), juce::jmin (780, getHeight() - 40));
     close.setBounds (card.getRight() - 24 - 44, card.getY() + 20, 44, 44);
     done.setBounds (card.getRight() - 32 - 120, card.getBottom() - 24 - 48, 120, 48);
 }

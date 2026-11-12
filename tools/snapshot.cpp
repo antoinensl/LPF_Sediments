@@ -174,6 +174,47 @@ int main (int argc, char** argv)
         juce::FileOutputStream os (f);
         juce::PNGImageFormat().writeImageToStream (framed, os);
     }
+    // 16-18. Space: 8 speakers placed by the map, each sound by hand, Ambisonics dome
+    {
+        setParam (proc, "source", 1.0f);
+        setParam (proc, "output", 5.0f);
+        setParam (proc, "place", 1.0f);
+        setParam (proc, "scatter", 0.15f);
+        syncEngine (proc);
+        ed->setUiMode (3);
+        shoot (proc, *ed, outDir.getChildFile ("16_space_ring.png"), 900);
+
+        setParam (proc, "place", 2.0f);
+        setParam (proc, "scatter", 0.0f);
+        proc.setSoundDirection (files[0], -60.0f);
+        syncEngine (proc);
+        shoot (proc, *ed, outDir.getChildFile ("17_space_each.png"), 900);
+
+        setParam (proc, "output", 11.0f);
+        setParam (proc, "place", 3.0f);
+        setParam (proc, "height", 1.0f);
+        setParam (proc, "scatter", 0.25f);
+        setParam (proc, "rotate", 0.1f);
+        syncEngine (proc);
+        shoot (proc, *ed, outDir.getChildFile ("18_space_ambisonics.png"), 900);
+
+        setParam (proc, "output", 0.0f);
+        syncEngine (proc);
+        shoot (proc, *ed, outDir.getChildFile ("19_space_stereo.png"), 500);
+
+        juce::MemoryBlock mb;
+        proc.getStateInformation (mb);
+        SedimentsProcessor other;
+        other.setStateInformation (mb.getData(), (int) mb.getSize());
+        std::printf ("direction round trip: %d sound(s), first %.1f\n", (int) other.soundDirections.size(),
+                     other.soundDirections.empty() ? 0.0f : other.soundDirections.begin()->second);
+        while (other.engine.isBusy()) juce::Thread::sleep (20);
+        setParam (proc, "height", 0.0f);
+        setParam (proc, "rotate", 0.0f);
+        setParam (proc, "scatter", 0.0f);
+        setParam (proc, "place", 0.0f);
+        ed->setUiMode (0);
+    }
     setParam (proc, "source", 0.0f);
     syncEngine (proc);
 

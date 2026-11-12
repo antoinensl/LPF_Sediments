@@ -4,7 +4,9 @@
 SedimentsProcessor::SedimentsProcessor()
     : AudioProcessor (BusesProperties()
                           .withInput ("Input", juce::AudioChannelSet::stereo(), true)
-                          .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
+                          // 16 outputs: enough for a ring of 16 speakers or 3rd-order Ambisonics.
+                          // On a stereo track only the first two are used.
+                          .withOutput ("Output", juce::AudioChannelSet::discreteChannels (Spatial::maxChannels), true)),
       params (*this, nullptr, "Sediments", createLayout())
 {
     pX     = params.getRawParameterValue ("x");
@@ -15,7 +17,8 @@ SedimentsProcessor::SedimentsProcessor()
     pGain  = params.getRawParameterValue ("gain");
     pDry   = params.getRawParameterValue ("dry");
     for (auto* id : { "source", "grain", "flow", "flowSpeed", "pathOn", "pathSync", "pathSpeed", "pathDir", "pathAnchor",
-                      "midiMode", "spray", "attack", "release" })
+                      "midiMode", "spray", "attack", "release",
+                      "output", "ringStart", "place", "height", "width", "scatter", "rotate" })
         raw[id] = params.getRawParameterValue (id);
 }
 
@@ -82,6 +85,28 @@ juce::AudioProcessorValueTreeState::ParameterLayout SedimentsProcessor::createLa
                     NormalisableRange<float> (0.01f, 8.0f, 0.0f, 0.3f), 0.5f,
                     AudioParameterFloatAttributes().withStringFromValueFunction ([] (float v, int)
                         { return v < 1.0f ? String (roundToInt (v * 1000.0f)) + " ms" : String (v, 2) + " s"; })));
+
+    // Space
+    StringArray outputs;
+    for (int i = 0; i < Spatial::numOutputChoices; ++i)
+        outputs.add (Spatial::outputNames[i]);
+    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "output", 1 }, "Output", outputs, 0));
+    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "ringStart", 1 }, "Speaker 1",
+                    StringArray { "Front left", "Front centre" }, 0));
+    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "place", 1 }, "Place grains by",
+                    StringArray { "Centre", "Map", "Each sound", "Pitch", "Brightness", "Noisiness", "Loudness" }, 0));
+    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "height", 1 }, "Height",
+                    StringArray { "Flat", "Dome", "Pitch", "Brightness", "Noisiness", "Loudness" }, 0));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "width", 1 }, "Width", 0.0f, 1.0f, 1.0f));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "scatter", 1 }, "Scatter", 0.0f, 1.0f, 0.0f));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "rotate", 1 }, "Rotation",
+                    NormalisableRange<float> (-1.0f, 1.0f, 0.0f, 0.5f, true), 0.0f,
+                    AudioParameterFloatAttributes().withStringFromValueFunction ([] (float v, int)
+                    {
+                        if (std::abs (v) < 0.002f) return String ("Still");
+                        const float rpm = std::abs (v) * 60.0f;
+                        return String (rpm, rpm < 10.0f ? 1 : 0) + " turns/min " + (v > 0.0f ? "clockwise" : "anticlockwise");
+                    })));
     return layout;
 }
 
@@ -102,7 +127,7 @@ void SedimentsProcessor::releaseResources()
 bool SedimentsProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
     const auto out = layouts.getMainOutputChannelSet();
-    if (out != juce::AudioChannelSet::mono() && out != juce::AudioChannelSet::stereo())
+    if (out.isDisabled() || out.size() > 64)
         return false;
     const auto in = layouts.getMainInputChannelSet();
     return in.isDisabled() || in == juce::AudioChannelSet::mono() || in == juce::AudioChannelSet::stereo();
@@ -136,6 +161,14 @@ void SedimentsProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     engine.spray       = raw["spray"]->load();
     engine.attackSec   = raw["attack"]->load();
     engine.releaseSec  = raw["release"]->load();
+    engine.outputChoice = (int) raw["output"]->load();
+    engine.frontCentre  = raw["ringStart"]->load() > 0.5f;
+    engine.placeBy      = (int) raw["place"]->load();
+    engine.heightMode   = (int) raw["height"]->load();
+    engine.spaceWidth   = raw["width"]->load();
+    engine.scatter      = raw["scatter"]->load();
+    engine.rotateSpeed  = raw["rotate"]->load();
+    engine.hostOutputChannels = getTotalNumOutputChannels();
 
     // Host tempo and position, for paths locked to the tempo.
     bool playing = false;
@@ -201,6 +234,9 @@ void SedimentsProcessor::getStateInformation (juce::MemoryBlock& destData)
         auto it = soundColours.find (f);
         if (it != soundColours.end())
             file.setProperty ("colour", it->second.toString(), nullptr);
+        auto dir = soundDirections.find (f);
+        if (dir != soundDirections.end())
+            file.setProperty ("direction", dir->second, nullptr);
         session.appendChild (file, nullptr);
     }
     if (auto p = engine.getPath())
@@ -229,19 +265,22 @@ void SedimentsProcessor::setStateInformation (const void* data, int sizeInBytes)
     if (session.isValid())
     {
         model = session["model"].toString();
-        uiMode = juce::jlimit (0, 2, (int) session.getProperty ("uiMode", 0));
+        uiMode = juce::jlimit (0, 3, (int) session.getProperty ("uiMode", 0));
         withoutModel = (bool) session.getProperty ("noModel", false);
         lx = (int) session.getProperty ("layoutX", 0);
         ly = (int) session.getProperty ("layoutY", 0);
         uiWidth = juce::jlimit (900, 3000, (int) session.getProperty ("uiWidth", uiWidth));
         uiHeight = juce::jlimit (640, 2000, (int) session.getProperty ("uiHeight", uiHeight));
         soundColours.clear();
+        soundDirections.clear();
         for (auto child : session)
             if (child.hasType ("File"))
             {
                 files.add (child["path"].toString());
                 if (child.hasProperty ("colour"))
                     soundColours[child["path"].toString()] = juce::Colour::fromString (child["colour"].toString());
+                if (child.hasProperty ("direction"))
+                    soundDirections[child["path"].toString()] = (float) child["direction"];
             }
         juce::MemoryBlock mb;
         if (session.hasProperty ("path") && mb.fromBase64Encoding (session["path"].toString()))
@@ -253,6 +292,7 @@ void SedimentsProcessor::setStateInformation (const void* data, int sizeInBytes)
         state.removeChild (session, nullptr);
     }
     params.replaceState (state);
+    engine.setSoundDirections (soundDirections);
     engine.restoreAsync (model, files, withoutModel, lx, ly);
 }
 
