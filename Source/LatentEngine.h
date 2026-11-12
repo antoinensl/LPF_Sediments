@@ -217,6 +217,7 @@ private:
     std::map<juce::String, float> soundDirections;   // guarded by snapMutex
     std::atomic<int> soundDirVersion { 0 };
     std::atomic<int> grainMarkNext { 0 };
+    std::atomic<juce::uint32> lastGrainMark { 0 };
     void publishGrain (const Spatial::Place&, int source) noexcept;
     void publishModelPlace (const Spatial::Place&) noexcept;
 

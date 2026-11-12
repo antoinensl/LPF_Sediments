@@ -17,7 +17,7 @@ static bool looksLikeError (const juce::String& st)
 //==============================================================================
 SedimentsEditor::Content::Content (SedimentsEditor& o, SedimentsProcessor& p)
     : owner (o), proc (p),
-      top (p, actions), modes (actions), map (p), mix (p, actions), gesture (p, map), keys (p), space (p),
+      top (p, actions), modes (actions), map (p), mix (p, actions), gesture (p, map), keys (p), space (p), room (p),
       sounds (p, actions), shape (p), welcome (p, actions), settingsPanel (p)
 {
     setTitle ("Sediments");
@@ -39,9 +39,11 @@ SedimentsEditor::Content::Content (SedimentsEditor& o, SedimentsProcessor& p)
     actions.calloutParent = [this] { return (juce::Component*) this; };
     map.colourOf = actions.colourOf;
     map.shapeOf = actions.shapeOf;
+    room.colourOf = actions.colourOf;
+    room.shapeOf = actions.shapeOf;
 
     for (auto* c : { (juce::Component*) &top, (juce::Component*) &modes, (juce::Component*) &map, (juce::Component*) &mix,
-                     (juce::Component*) &gesture, (juce::Component*) &keys, (juce::Component*) &space, (juce::Component*) &sideViewport,
+                     (juce::Component*) &gesture, (juce::Component*) &keys, (juce::Component*) &space, (juce::Component*) &room, (juce::Component*) &sideViewport,
                      (juce::Component*) &welcome, (juce::Component*) &banner, (juce::Component*) &layoutButton })
         addAndMakeVisible (c);
     layoutButton.setTooltip ("Choose how the map is laid out: by similarity, or by pitch, brightness, noisiness or loudness");
@@ -89,8 +91,13 @@ void SedimentsEditor::Content::resized()
     settingsPanel.setBounds (getLocalBounds());
     help.setBounds (getLocalBounds());
 
-    for (auto* c : { (juce::Component*) &modes, (juce::Component*) &map, (juce::Component*) &sideViewport, (juce::Component*) &layoutButton })
+    roomShown = wantsRoom();
+    for (auto* c : { (juce::Component*) &modes, (juce::Component*) &sideViewport })
         c->setVisible (! welcomeShown);
+    // In the Space tab the room replaces the map, unless grains are placed by the map.
+    map.setVisible (! welcomeShown && ! roomShown);
+    layoutButton.setVisible (! welcomeShown && ! roomShown);
+    room.setVisible (! welcomeShown && roomShown);
     welcome.setVisible (welcomeShown);
     mix.setVisible (! welcomeShown && mode == Mode::explore);
     gesture.setVisible (! welcomeShown && mode == Mode::gesture);
@@ -123,9 +130,16 @@ void SedimentsEditor::Content::resized()
         body.removeFromBottom (10);
     }
     map.setBounds (body);
+    room.setBounds (body);
     const int lw = juce::jmin (layoutButton.idealWidth (40), body.getWidth() / 2);
     layoutButton.setBounds (body.getRight() - 12 - lw, body.getY() + 12, lw, 40);
     banner.setBounds (body.getX() + 12, body.getY() + 60, body.getWidth() - 24, 48);
+}
+
+bool SedimentsEditor::Content::wantsRoom() const
+{
+    return mode == Mode::space
+           && (int) proc.params.getRawParameterValue ("place")->load() != (int) Spatial::PlaceBy::map;
 }
 
 bool SedimentsEditor::Content::keyPressed (const juce::KeyPress& k)
@@ -150,6 +164,8 @@ bool SedimentsEditor::Content::keyPressed (const juce::KeyPress& k)
         return true;
     }
     if (k.isKeyCode (juce::KeyPress::spaceKey)) { map.hearNearestToCursor(); return true; }
+    if (! map.isVisible())
+        return false;
     if (k.isKeyCode (juce::KeyPress::leftKey) || k.isKeyCode (juce::KeyPress::rightKey)
         || k.isKeyCode (juce::KeyPress::upKey) || k.isKeyCode (juce::KeyPress::downKey))
     {
@@ -298,6 +314,10 @@ void SedimentsEditor::timerCallback()
         c.keys.refresh();
         if (c.mode == Mode::space)
             c.space.refresh();
+        if (c.wantsRoom() != c.roomShown)
+            c.resized();
+        if (c.roomShown)
+            c.room.refresh();
         c.shape.refresh();
         c.sounds.refresh (corpus);
         const int lay = e.getLayoutX() * 10 + e.getLayoutY();

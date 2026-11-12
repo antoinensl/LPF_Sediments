@@ -106,7 +106,7 @@ The **Space** tab sends the sound to more than two outputs. Each grain of your o
 |---|---|---|
 | **Stereo** | 2 | Grains are placed between left and right (the front/back part of a direction is folded). |
 | **4 to 16 speakers** | 4, 5, 6, 7, 8, 10, 12 or 16 | A ring of loudspeakers, evenly spaced, numbered clockwise. **Speaker 1** is either just left of the front (the first pair straddles the front, as in most quad and octophonic setups) or straight ahead. Each grain is panned between the two nearest speakers, at constant power. |
-| **Ambisonics 1st, 2nd, 3rd order** | 4, 9 or 16 | AmbiX format (ACN channel order, SN3D normalisation), with height. Decode it afterwards for any speaker layout, or for headphones with a binaural decoder (for example the free [IEM Plug-in Suite](https://plugins.iem.at/): BinauralDecoder, AllRADecoder). |
+| **Ambisonics 1st, 2nd, 3rd order** | 4, 9 or 16 | AmbiX format (ACN channel order, SN3D normalisation), with height. Decode it afterwards for any speaker layout, or for headphones with a binaural decoder (for example the free [IEM Plug-in Suite](https://plugins.iem.at/): BinauralDecoder, AllRADecoder). A 16-channel render also works as a sound sphere in game engines: Wwise imports AmbiX up to 5th order, Unity accepts ACN/SN3D clips up to 3rd order (with a third-party ambisonic decoder). |
 
 The plugin has 16 outputs. **In Reaper, give the track enough channels**: click the track's **Routing** button, then set **Track channels** (8 for 8 speakers, 16 for 3rd-order Ambisonics; Reaper only offers even numbers, so 10 for 2nd order). On a stereo track only the first two outputs are heard. Then route the track to your speaker outputs, or put a decoder after the plugin.
 
@@ -126,13 +126,23 @@ The plugin has 16 outputs. **In Reaper, give the track enough channels**: click 
 | **Width** | 100 % = all around; lower values gather the directions towards the front (does not change directions set by hand). |
 | **Scatter** | Random spread around the computed place: 0 = exact, 100 % = a grain can come from anywhere. Also lifts grains away from the centre. |
 | **Rotation** | Turns the whole scene, clockwise or anticlockwise, up to 60 turns a minute. |
-| **Height** (Ambisonics) | **Flat**, **Dome** (the middle of the map is right above you, its edges on the horizon), or **Pitch / Brightness / Noisiness / Loudness** (high values above, low values below). |
+| **Height** (Ambisonics) | **Flat**, **Dome** (the middle of the map is right above you, its edges on the horizon), or **Pitch / Brightness / Noisiness / Loudness** over the whole sphere (high values above, low values below, from about −85° to +85°). |
 
 With a model, the model's voice is a continuous sound, not grains: it moves as one source (following the cursor, the nearest sound or its properties) and Scatter does not apply to it. Turn **Source** towards your originals to scatter grains.
 
-In the Space tab, the map shows the room: the speakers (or Front, Back, Left, Right for Ambisonics), where the latest grains were heard (fading dots, in each sound's colour) and, as a ring, the model's voice.
+What the Space tab shows:
 
-![Ambisonics, 3rd order, dome](docs/screens/18_space_ambisonics.png)
+- **Place grains by Map**: the map itself, with the room drawn on it (the map *is* the room).
+- **Any other placement**: the room on its own, in place of the map. Each grain appears where it is heard with a small pop, then shrinks and fades in 1.5 s, in its sound's colour and shape. About 30 grains a second are drawn at most, so very short grains stay readable. The model's voice is a ring.
+  - **Speakers**: seen from above, you in the middle (the small triangle points to the front), speakers numbered.
+  - **Stereo**: left to right; new grains appear at the top and slide down as they age.
+  - **Ambisonics**: the whole sphere in 3D. A dotted line drops from each grain to the floor (the horizontal plane through your ears), with a small shadow, so you can tell above from below; nearer grains are drawn bigger. Drag to turn the view, double-click to reset.
+- The **Each sound** handles sit on the edge of the room (on the floor circle in 3D).
+- **Calm motion** (Settings) removes the pop and keeps a plain fade.
+
+![8 speakers, placed by pitch](docs/screens/20_space_ring_pitch.png)
+
+![Ambisonics, 3rd order, in 3D](docs/screens/18_space_ambisonics.png)
 
 ## Display and accessibility (Settings)
 
@@ -255,7 +265,8 @@ The workflow in `.github/workflows/build.yml` builds Windows and macOS on every 
 | `Source/PluginEditor.*` | Interface assembly, scaling (text size), keyboard shortcuts, drag and drop. |
 | `Source/ui/UiCore.*` | Themes, colour palettes, contrast, bundled fonts, display settings, icons, button and slider drawing. |
 | `Source/ui/Widgets.*` | Labelled sliders, segmented choices, checkboxes with descriptions. |
-| `Source/ui/MapView.*` | The map: marks, contour lines, MIDI zones, gesture, keyboard-accessible cursor, the room in the Space tab and per-sound direction handles. |
+| `Source/ui/MapView.*` | The map: marks, contour lines, MIDI zones, gesture, keyboard-accessible cursor, the room drawn over it when grains are placed by the map. |
+| `Source/ui/RoomView.*` | The room on its own in the Space tab: speakers from above, stereo cascade, Ambisonics sphere in 3D; per-sound direction handles. |
 | `Source/ui/Panels.*` | Top bar, tabs, "You're hearing", Gesture, Keys and Space panels, sound list, sound controls, welcome screen, map layout, settings, help. |
 | `Resources/fonts/` | Atkinson Hyperlegible and OpenDyslexic (SIL Open Font License, OFL files included). |
 | `packaging/` | Installers and read-me files shipped in the release zips. |

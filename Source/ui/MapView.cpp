@@ -1,4 +1,5 @@
 #include "MapView.h"
+#include "RoomView.h"
 
 namespace lt
 {
@@ -97,26 +98,6 @@ void MapView::refresh()
         dotsDirty = true;
         rebuildContours();
         rebuildRegions();
-        rebuildHandles();
-    }
-    {
-        const bool show = mode == Mode::space && (int) proc.params.getRawParameterValue ("place")->load() == (int) Spatial::PlaceBy::eachSound;
-        for (auto* h : dirHandles)
-        {
-            h->setVisible (show);
-            if (show)
-            {
-                const auto c = roomPoint (h->direction(), 1.0f);
-                h->setBounds (juce::Rectangle<int> (34, 34).withCentre (c.roundToInt()));
-                if (colourOf != nullptr && corpus != nullptr && h->source < (int) corpus->sources.size())
-                {
-                    const auto& src = corpus->sources[(size_t) h->source];
-                    auto col = colourOf (src);
-                    const int sh = shapeOf ? shapeOf (src) : 0;
-                    if (col != h->colour || sh != h->shape) { h->colour = col; h->shape = sh; h->repaint(); }
-                }
-            }
-        }
     }
     shownPath = proc.engine.getPath();
 
@@ -660,25 +641,6 @@ float MapView::roomAngleAt (juce::Point<float> p) const
     return std::atan2 (dx, dy) / degToRad;
 }
 
-void MapView::rebuildHandles()
-{
-    for (auto* h : dirHandles)
-        removeChildComponent (h);
-    dirHandles.clear();
-    if (corpus == nullptr)
-        return;
-    for (size_t i = 0; i < corpus->sources.size(); ++i)
-    {
-        const auto& src = corpus->sources[i];
-        if (src.path.empty())
-            continue;
-        auto name = juce::File::createFileWithoutCheckingPath (src.path).getFileNameWithoutExtension();
-        auto* h = dirHandles.add (new SoundDirHandle (proc, *this, (int) i, src.path, name));
-        addChildComponent (h);
-    }
-    cursor.toFront (false);
-}
-
 void MapView::paintSpace (juce::Graphics& g)
 {
     auto& s = ui();
@@ -722,16 +684,12 @@ void MapView::paintSpace (juce::Graphics& g)
     {
         const int src = m.source.load();
         const auto age = (float) (now - m.when.load());
-        if (src < 0 || age > 1500.0f || corpus == nullptr || src >= (int) corpus->sources.size())
+        if (src < 0 || age > grainMarkLifeMs || corpus == nullptr || src >= (int) corpus->sources.size())
             continue;
         const float el = ambi ? m.el.load() : 0.0f;
-        const float r = m.dist.load() * std::cos (el * degToRad);
-        const auto p = roomPoint (m.az.load(), r);
-        const float a = 1.0f - age / 1500.0f;
-        const float size = 7.0f + (ambi ? 5.0f * std::sin (juce::jmax (0.0f, el) * degToRad) : 0.0f);
-        auto col = colourOf ? colourOf (corpus->sources[(size_t) src]) : s.accent();
-        g.setColour (col.withAlpha (0.85f * a));
-        g.fillEllipse (p.x - size * 0.5f, p.y - size * 0.5f, size, size);
+        const auto p = roomPoint (m.az.load(), m.dist.load() * std::cos (el * degToRad));
+        const auto& source = corpus->sources[(size_t) src];
+        drawGrainMark (g, shapeOf ? shapeOf (source) : 0, p, age, colourOf ? colourOf (source) : s.accent());
     }
     if (proc.engine.modelPlaceActive.load())
     {
@@ -777,81 +735,4 @@ void MapView::paintSpace (juce::Graphics& g)
 
 }
 
-//==============================================================================
-SoundDirHandle::SoundDirHandle (SedimentsProcessor& p, MapView& m, int src, const juce::String& filePath, const juce::String& n)
-    : source (src), path (filePath), name (n), proc (p), map (m)
-{
-    setWantsKeyboardFocus (true);
-    setTitle (name + " direction");
-    setDescription ("Drag around the circle, or use the arrow keys (Shift for fine steps).");
-    setMouseCursor (juce::MouseCursor::DraggingHandCursor);
-}
-
-float SoundDirHandle::direction() const
-{
-    auto it = proc.soundDirections.find (path);
-    if (it != proc.soundDirections.end())
-        return it->second;
-    auto c = map.getCorpus();
-    return Spatial::defaultSoundAz (source, c != nullptr ? (int) c->sources.size() : 1);
-}
-
-void SoundDirHandle::setDirection (float deg)
-{
-    deg = std::fmod (deg + 540.0f, 360.0f) - 180.0f;
-    proc.setSoundDirection (path, deg);
-    setTooltip (name + ": " + describeDirection (deg));
-    if (auto* h = getAccessibilityHandler())
-        h->notifyAccessibilityEvent (juce::AccessibilityEvent::valueChanged);
-    map.refresh();
-}
-
-void SoundDirHandle::paint (juce::Graphics& g)
-{
-    auto& s = ui();
-    auto b = getLocalBounds().toFloat().reduced (4.0f);
-    g.setColour (s.theme().panel);
-    g.fillEllipse (b);
-    g.setColour (colour);
-    g.drawEllipse (b.reduced (1.5f), 3.0f);
-    drawGlyph (g, shape, b.getCentre(), 10.0f, colour);
-    if (hasKeyboardFocus (false))
-    {
-        g.setColour (s.theme().focus);
-        g.drawEllipse (getLocalBounds().toFloat().reduced (1.0f), 2.5f);
-    }
-}
-
-void SoundDirHandle::mouseDown (const juce::MouseEvent& e) { mouseDrag (e); }
-
-void SoundDirHandle::mouseDrag (const juce::MouseEvent& e)
-{
-    float a = map.roomAngleAt (e.getEventRelativeTo (&map).position);
-    if (e.mods.isShiftDown())
-        a = 15.0f * std::round (a / 15.0f);
-    setDirection (a);
-}
-
-bool SoundDirHandle::keyPressed (const juce::KeyPress& k)
-{
-    const float step = k.getModifiers().isShiftDown() ? 1.0f : 15.0f;
-    if (k.isKeyCode (juce::KeyPress::rightKey) || k.isKeyCode (juce::KeyPress::upKey))   { setDirection (direction() + step); return true; }
-    if (k.isKeyCode (juce::KeyPress::leftKey)  || k.isKeyCode (juce::KeyPress::downKey)) { setDirection (direction() - step); return true; }
-    if (k.isKeyCode (juce::KeyPress::homeKey)) { setDirection (0.0f); return true; }
-    return false;
-}
-
-std::unique_ptr<juce::AccessibilityHandler> SoundDirHandle::createAccessibilityHandler()
-{
-    struct Value : public juce::AccessibilityTextValueInterface
-    {
-        explicit Value (SoundDirHandle& h) : owner (h) {}
-        bool isReadOnly() const override { return true; }
-        juce::String getCurrentValueAsString() const override { return describeDirection (owner.direction()); }
-        void setValueAsString (const juce::String&) override {}
-        SoundDirHandle& owner;
-    };
-    return std::make_unique<juce::AccessibilityHandler> (*this, juce::AccessibilityRole::slider, juce::AccessibilityActions{},
-                                                         juce::AccessibilityHandler::Interfaces { std::make_unique<Value> (*this) });
-}
 }

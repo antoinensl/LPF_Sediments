@@ -187,6 +187,11 @@ void LatentEngine::setSoundDirections (const std::map<juce::String, float>& dire
 
 void LatentEngine::publishGrain (const Spatial::Place& p, int source) noexcept
 {
+    // at most ~30 marks a second: very short grains would only make a blur on screen
+    const auto now = juce::Time::getMillisecondCounter();
+    if (now - lastGrainMark.load() < 33)
+        return;
+    lastGrainMark = now;
     auto& m = grainMarks[(grainMarkNext++ & 0x7fffffff) % numGrainMarks];
     m.az = p.az; m.el = p.el; m.dist = p.dist; m.source = source;
     m.when = juce::Time::getMillisecondCounter();

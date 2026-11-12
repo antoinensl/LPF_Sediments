@@ -190,6 +190,11 @@ int main (int argc, char** argv)
         syncEngine (proc);
         shoot (proc, *ed, outDir.getChildFile ("17_space_each.png"), 900);
 
+        setParam (proc, "place", 3.0f);
+        setParam (proc, "scatter", 0.2f);
+        syncEngine (proc);
+        shoot (proc, *ed, outDir.getChildFile ("20_space_ring_pitch.png"), 900);
+
         setParam (proc, "output", 11.0f);
         setParam (proc, "place", 3.0f);
         setParam (proc, "height", 1.0f);

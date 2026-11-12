@@ -50,6 +50,9 @@ private:
         lt::GesturePanel gesture;
         lt::KeysPanel keys;
         lt::SpacePanel space;
+        lt::RoomView room;
+        bool roomShown = false;
+        bool wantsRoom() const;
         juce::Viewport sideViewport;
         juce::Component side;
         lt::SoundsCard sounds;

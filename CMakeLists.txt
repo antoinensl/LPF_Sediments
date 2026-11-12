@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(Sediments VERSION 0.9.0 LANGUAGES C CXX)
+project(Sediments VERSION 0.9.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -65,6 +65,7 @@ set(LT_UI_SOURCES
     Source/ui/UiCore.cpp
     Source/ui/Widgets.cpp
     Source/ui/MapView.cpp
+    Source/ui/RoomView.cpp
     Source/ui/Panels.cpp)
 
 # --- The plugin ---------------------------------------------------------------

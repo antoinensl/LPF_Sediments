@@ -6,32 +6,6 @@
 namespace lt
 {
     enum class Mode { explore = 0, gesture = 1, keys = 2, space = 3 };
-    class MapView;
-
-    // Space tab, "Each sound": one handle per sound on the edge of the room.
-    // Drag it around the circle, or focus it and use the arrow keys.
-    class SoundDirHandle : public juce::Component, public juce::SettableTooltipClient
-    {
-    public:
-        SoundDirHandle (SedimentsProcessor&, MapView&, int source, const juce::String& path, const juce::String& name);
-        void paint (juce::Graphics&) override;
-        void mouseDown (const juce::MouseEvent&) override;
-        void mouseDrag (const juce::MouseEvent&) override;
-        bool keyPressed (const juce::KeyPress&) override;
-        void focusGained (FocusChangeType) override { repaint(); }
-        void focusLost (FocusChangeType) override   { repaint(); }
-        std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
-        float direction() const;
-        void setDirection (float degrees);
-        int source;
-        juce::String path, name;
-        juce::Colour colour;
-        int shape = 0;
-    private:
-        SedimentsProcessor& proc;
-        MapView& map;
-    };
-
     // "Front", "Front right, 45 degrees"...
     juce::String describeDirection (float degrees);
 
@@ -113,8 +87,6 @@ namespace lt
         int zoneAt (juce::Point<float> p) const;
         bool showZones() const;
         void positionCursor();
-        juce::OwnedArray<SoundDirHandle> dirHandles;
-        void rebuildHandles();
         void paintSpace (juce::Graphics&);
     };
 }

@@ -208,7 +208,7 @@ namespace Spatial
                 break;
             }
             default:
-                p.el = (descValue (c, unit, (int) height - 1) - 0.5f) * 120.0f;
+                p.el = (descValue (c, unit, (int) height - 1) - 0.5f) * 170.0f;   // the whole sphere
                 break;
         }
         if (rnd != nullptr && scatter > 0.0f)
