@@ -20,6 +20,8 @@ GitHub builds the plugin automatically on every update, so you don't need Visual
 
 The very latest work-in-progress builds are also in the **Actions** tab (open the latest successful run, then **Artifacts** at the bottom of the page). They are kept for 14 days, and you need to be signed in to GitHub to download them.
 
+In Reaper the plugin shows up as **Sediments (Life Pass Filter)**. If an older version still shows another name, use *Options → Preferences → Plug-ins → VST → Clear cache/re-scan*.
+
 On macOS the plugin is not signed by Apple (official signing costs 99 € a year). The installer removes the quarantine flag so macOS accepts to load it on your own computer.
 
 ## How it works

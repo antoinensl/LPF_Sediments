@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(Sediments VERSION 0.9.1 LANGUAGES C CXX)
+project(Sediments VERSION 0.9.2 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -76,7 +76,8 @@ if(APPLE)
 endif()
 
 juce_add_plugin(Sediments
-    COMPANY_NAME "Antoine Boucherikha"
+    COMPANY_NAME "Life Pass Filter"
+    COMPANY_WEBSITE "https://lifepassfilter.com"
     BUNDLE_ID com.boucherikha.sediments
     PRODUCT_NAME "Sediments"
     PLUGIN_MANUFACTURER_CODE Lpfl
