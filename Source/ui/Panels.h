@@ -13,6 +13,7 @@ namespace lt
         std::function<int (const Corpus::Source&)> shapeOf;
         std::function<void()> coloursChanged;          // a sound's colour was changed
         std::function<juce::Component*()> calloutParent;
+        std::function<void (const juce::String& path)> highlightSound;   // empty path = none
     };
 
     //==========================================================================
@@ -153,6 +154,9 @@ namespace lt
         LabeledSlider width, scatter, rotate;
         LtButton evenly { "Spread evenly", "compass" };
         LabeledGroup outputGroup, placeGroup, heightGroup, ringGroup;
+        CheckRow centre { "Use centre speaker", "Off: the centre stays free, sounds in front come from L and R" };
+        CheckRow lfe { "Feed the LFE", "Sends the lows of the whole mix (below 120 Hz) to the sub channel" };
+        std::unique_ptr<juce::ButtonParameterAttachment> centreAttach, lfeAttach;
         juce::Component evenlyBox;
         juce::String note;
         bool warning = false;
@@ -165,6 +169,11 @@ namespace lt
     {
     public:
         SoundRow (SedimentsProcessor&, EditorActions&, const juce::String& path);
+        void mouseEnter (const juce::MouseEvent&) override { if (actions.highlightSound) actions.highlightSound (path); }
+        void mouseExit (const juce::MouseEvent&) override
+        {
+            if (! isMouseOver (true) && actions.highlightSound) actions.highlightSound ({});
+        }
         void update (const Corpus* corpus, int frames, const juce::String& auditioning);
         void paint (juce::Graphics&) override;
         void resized() override;
@@ -212,6 +221,8 @@ namespace lt
     private:
         SedimentsProcessor& proc;
         LabeledSlider source, focus, terrain, glide, flow, grain, flowSpeed, dry;
+        Segmented playSeg { { "Always", "Reaper plays", "Clicking" }, "Sound plays" };
+        LabeledGroup playGroup { "Sound plays", playSeg };
         bool hasModel = true, usesOriginals = false;
         std::vector<LabeledSlider*> visibleSliders() const;
         LtButton more { "More", "chevronDown", LtButton::Style::ghost };

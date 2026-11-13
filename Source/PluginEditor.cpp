@@ -35,6 +35,7 @@ SedimentsEditor::Content::Content (SedimentsEditor& o, SedimentsProcessor& p)
         return ui().soundColour (src.colour, it != proc.soundColours.end() ? it->second : juce::Colour());
     };
     actions.shapeOf = [] (const Corpus::Source& src) { return shapeFor (src.colour, ui().shapes); };
+    actions.highlightSound = [this] (const juce::String& path) { map.highlightSound (path); };
     actions.coloursChanged = [this] { map.invalidateDots(); sounds.rebuildColours(); sounds.refresh (proc.engine.getCorpus()); mix.repaint(); };
     actions.calloutParent = [this] { return (juce::Component*) this; };
     map.colourOf = actions.colourOf;

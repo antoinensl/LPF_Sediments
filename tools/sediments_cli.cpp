@@ -43,6 +43,8 @@ int main (int argc, char** argv)
     if (auto* v = std::getenv ("LT_SCATTER")) engine.scatter = (float) std::atof (v);
     if (auto* v = std::getenv ("LT_ROTATE"))  engine.rotateSpeed = (float) std::atof (v);
     if (auto* v = std::getenv ("LT_WIDTH"))   engine.spaceWidth = (float) std::atof (v);
+    if (std::getenv ("LT_LFE"))      engine.lfeOn = true;
+    if (std::getenv ("LT_NOCENTRE")) engine.useCentre = false;
     const int numCh = Spatial::formatFor (engine.outputChoice.load(), false).channels;
     engine.addFilesAsync (inputs);
 

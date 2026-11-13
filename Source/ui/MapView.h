@@ -17,8 +17,9 @@ namespace lt
         explicit CursorHandle (SedimentsProcessor& p);
         void paint (juce::Graphics&) override;
         bool keyPressed (const juce::KeyPress&) override;
+        bool keyStateChanged (bool) override;       // Enter held = like holding the mouse ("Clicking")
         void focusGained (FocusChangeType) override { repaint(); }
-        void focusLost (FocusChangeType) override   { repaint(); }
+        void focusLost (FocusChangeType) override;
         std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
         void moveBy (float dx, float dy);
 
@@ -34,6 +35,7 @@ namespace lt
 
         void setMode (Mode m) { mode = m; repaint(); }
         Mode getMode() const { return mode; }
+        void highlightSound (const juce::String& path);
         // The room drawn over the map in the Space tab (an ellipse in map space).
         juce::Point<float> roomPoint (float azDegrees, float radius01) const;
         float roomAngleAt (juce::Point<float> p) const;
@@ -72,6 +74,8 @@ namespace lt
         std::vector<Region> regions;
         std::shared_ptr<const std::vector<LatentEngine::PathPoint>> shownPath;
         int hover = -1;
+        int hoverSource = -1, listHighlight = -1;     // sound shown on hover (map or list)
+        float dotSize = 8.0f;
         juce::Point<float> hoverMouse;
         bool recording = false;
         double recordStart = 0.0;

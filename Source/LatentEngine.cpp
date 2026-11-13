@@ -136,7 +136,7 @@ void LatentEngine::render (juce::AudioBuffer<float>& buffer, int numSamples, flo
         if (lock.isLocked() && audition != nullptr && ! audition->finished.load())
         {
             auto& clip = *audition;
-            const bool ambisonic = outputChoice.load() >= 9;
+            const bool ambisonic = outputChoice.load() >= 9 && outputChoice.load() < Spatial::firstSurroundChoice;
             const int n = juce::jmin (numSamples, clip.buffer.getNumSamples() - clip.pos);
             for (int i = 0; i < n; ++i)
             {
@@ -168,11 +168,20 @@ void LatentEngine::render (juce::AudioBuffer<float>& buffer, int numSamples, flo
     int s1, n1, s2, n2;
     fifo.prepareToRead (toRead, s1, n1, s2, n2);
     const int chans = juce::jmin (buffer.getNumChannels(), Spatial::maxChannels);
-    for (int ch = 0; ch < chans; ++ch)
-    {
-        if (n1 > 0) buffer.addFrom (ch, 0, fifoBuffer, ch, s1, n1, gain);
-        if (n2 > 0) buffer.addFrom (ch, n1, fifoBuffer, ch, s2, n2, gain);
-    }
+    // "Sound plays": fade in quickly (20 ms) when allowed, out gently (200 ms) when not.
+    const float target = gateOpen.load() ? 1.0f : 0.0f;
+    const float seconds = target > gateGain ? 0.02f : 0.2f;
+    const float step = (float) (numSamples / (juce::jmax (1.0, hostRateForGate.load()) * seconds));
+    const float g0 = gateGain;
+    gateGain = target > gateGain ? juce::jmin (target, gateGain + step) : juce::jmax (target, gateGain - step);
+    const float g1 = gateGain;
+    const float gm = g0 + (g1 - g0) * (float) n1 / (float) juce::jmax (1, n1 + n2);
+    if (g0 > 0.0f || g1 > 0.0f)
+        for (int ch = 0; ch < chans; ++ch)
+        {
+            if (n1 > 0) buffer.addFromWithRamp (ch, 0, fifoBuffer.getReadPointer (ch, s1), n1, gain * g0, gain * gm);
+            if (n2 > 0) buffer.addFromWithRamp (ch, n1, fifoBuffer.getReadPointer (ch, s2), n2, gain * gm, gain * g1);
+        }
     fifo.finishedRead (n1 + n2);
 }
 
@@ -400,6 +409,10 @@ void LatentEngine::workerLoop()
     float rotationDeg = 0.0f;
     float prevGl[Spatial::maxChannels] = {}, prevGr[Spatial::maxChannels] = {};
     bool modelGainsValid = false;
+    struct Biquad { float b0 = 1, b1 = 0, b2 = 0, a1 = 0, a2 = 0, z1 = 0, z2 = 0; };
+    Biquad lfeFilter[2];
+    int lfeFilterChannel = -2;
+    double lfeFilterRate = 0.0;
     int modelChannels = 1;
     float gx = -1.0f, gy = -1.0f;      // glided position for grain picking
 
@@ -689,7 +702,7 @@ void LatentEngine::workerLoop()
         }
 
         // 4b. Space: where the model voice and each grain are heard.
-        const auto fmt = Spatial::formatFor (outputChoice.load(), frontCentre.load());
+        const auto fmt = Spatial::formatFor (outputChoice.load(), frontCentre.load(), useCentre.load(), lfeOn.load());
         {
             if (placerCorpus != corp.get())
             {
@@ -794,6 +807,40 @@ void LatentEngine::workerLoop()
         }
         else if (env.isActive())
             env.reset();
+
+        // 6. LFE: keep only the lows (Linkwitz-Riley, 24 dB/octave at 120 Hz).
+        {
+            const int lfeCh = fmt.lfe && fmt.layout != nullptr ? fmt.layout->lfeChannel : -1;
+            if (lfeCh != lfeFilterChannel || hostRate != lfeFilterRate)
+            {
+                lfeFilterChannel = lfeCh;
+                lfeFilterRate = hostRate;
+                const double w = std::tan (juce::MathConstants<double>::pi * 120.0 / hostRate);
+                const double q = std::sqrt (0.5), n = 1.0 / (1.0 + w / q + w * w);
+                for (auto& b : lfeFilter)
+                {
+                    b.b0 = (float) (w * w * n); b.b1 = 2.0f * b.b0; b.b2 = b.b0;
+                    b.a1 = (float) (2.0 * (w * w - 1.0) * n); b.a2 = (float) ((1.0 - w / q + w * w) * n);
+                    b.z1 = b.z2 = 0.0f;
+                }
+            }
+            if (lfeCh >= 0)
+            {
+                float* x = mixBuf.data() + (size_t) lfeCh * (size_t) produced;
+                for (int i = 0; i < produced; ++i)
+                {
+                    float v = x[i];
+                    for (auto& b : lfeFilter)
+                    {
+                        const float y = b.b0 * v + b.z1;
+                        b.z1 = b.b1 * v - b.a1 * y + b.z2;
+                        b.z2 = b.b2 * v - b.a2 * y;
+                        v = y;
+                    }
+                    x[i] = v;
+                }
+            }
+        }
         producedTotal += produced;
 
         int offset = 0;

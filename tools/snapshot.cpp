@@ -195,6 +195,14 @@ int main (int argc, char** argv)
         syncEngine (proc);
         shoot (proc, *ed, outDir.getChildFile ("20_space_ring_pitch.png"), 900);
 
+        setParam (proc, "output", 17.0f);     // 7.1.4
+        setParam (proc, "place", 2.0f);
+        setParam (proc, "lfe", 1.0f);
+        setParam (proc, "scatter", 0.15f);
+        syncEngine (proc);
+        shoot (proc, *ed, outDir.getChildFile ("21_space_714.png"), 900);
+        setParam (proc, "lfe", 0.0f);
+
         setParam (proc, "output", 11.0f);
         setParam (proc, "place", 3.0f);
         setParam (proc, "height", 1.0f);
@@ -222,6 +230,12 @@ int main (int argc, char** argv)
     }
     setParam (proc, "source", 0.0f);
     syncEngine (proc);
+
+    // 22. A sound pointed at on the map: its name and its moments stand out
+    ed->setUiMode (0);
+    ed->highlightSound (files[1]);
+    shoot (proc, *ed, outDir.getChildFile ("22_hover_sound.png"), 300);
+    ed->highlightSound ({});
 
     // 15. No model at all: descriptors, pitch / brightness axes
     {

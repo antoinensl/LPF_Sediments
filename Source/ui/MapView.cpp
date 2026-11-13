@@ -59,6 +59,20 @@ bool CursorHandle::keyPressed (const juce::KeyPress& k)
     return false;
 }
 
+bool CursorHandle::keyStateChanged (bool)
+{
+    const bool down = juce::KeyPress::isKeyCurrentlyDown (juce::KeyPress::returnKey);
+    if (down != proc.keyHeld.load())
+        proc.keyHeld = down;
+    return false;
+}
+
+void CursorHandle::focusLost (FocusChangeType)
+{
+    proc.keyHeld = false;
+    repaint();
+}
+
 std::unique_ptr<juce::AccessibilityHandler> CursorHandle::createAccessibilityHandler()
 {
     struct Value : public juce::AccessibilityTextValueInterface
@@ -94,7 +108,7 @@ void MapView::refresh()
     {
         shownCorpus = v;
         corpus = proc.engine.getCorpus();
-        hover = -1;
+        hover = -1; hoverSource = -1; listHighlight = -1;
         dotsDirty = true;
         rebuildContours();
         rebuildRegions();
@@ -135,6 +149,7 @@ void MapView::rebuildDots()
     juce::Graphics g (dots);
     const int n = corpus->size();
     const float size = n > 6000 ? 5.0f : (n > 1500 ? 6.5f : 8.0f);
+    dotSize = size;
     const float alpha = juce::jlimit (0.35f, 0.92f, 90.0f / std::sqrt ((float) n));
 
     std::vector<juce::Colour> colours;
@@ -289,22 +304,34 @@ void MapView::paint (juce::Graphics& g)
         g.setOpacity (1.0f);
         g.drawImageAt (dots, 0, 0);
 
-        // sound names
-        if (mode != Mode::keys && mode != Mode::space && ! showZones())
+        // A sound's name only shows when it is pointed at (on the map or in the list):
+        // its moments are brought forward and the others recede.
+        const int hl = hoverSource >= 0 ? hoverSource : listHighlight;
+        if (hl >= 0 && corpus != nullptr && hl < (int) corpus->sources.size() && mode != Mode::space && ! recording)
+        {
+            const auto& src = corpus->sources[(size_t) hl];
+            const auto col = colourOf ? colourOf (src) : s.accent();
+            const int shape = shapeOf ? shapeOf (src) : 0;
+            g.setColour (t.map.withAlpha (0.62f));
+            g.fillRect (bounds);
+            for (int i = 0; i < corpus->size(); ++i)
+                if (corpus->sourceIndex[(size_t) i] == hl)
+                    drawGlyph (g, shape, { corpus->xy[(size_t) i * 2] * W, corpus->xy[(size_t) i * 2 + 1] * H }, dotSize + 2.5f, col);
             for (auto& r : regions)
             {
-                const auto& src = corpus->sources[(size_t) r.source];
+                if (r.source != hl) continue;
                 g.setFont (s.font (12.5f, true));
                 const float tw = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), r.name);
                 auto pill = juce::Rectangle<float> (0, 0, tw + 34.0f, 26.0f).withCentre ({ juce::jlimit (tw * 0.5f + 24.0f, W - tw * 0.5f - 24.0f, r.x * W), juce::jlimit (16.0f, H - 16.0f, r.y * H + 26.0f) });
-                g.setColour (t.panel.withAlpha (0.92f));
+                g.setColour (t.panel.withAlpha (0.95f));
                 g.fillRoundedRectangle (pill, 13.0f);
-                g.setColour (t.line);
-                g.drawRoundedRectangle (pill.reduced (0.5f), 13.0f, 1.0f);
-                drawGlyph (g, shapeOf ? shapeOf (src) : 0, { pill.getX() + 14.0f, pill.getCentreY() }, 9.0f, colourOf ? colourOf (src) : s.accent());
+                g.setColour (col);
+                g.drawRoundedRectangle (pill.reduced (0.75f), 13.0f, 1.5f);
+                drawGlyph (g, shape, { pill.getX() + 14.0f, pill.getCentreY() }, 9.0f, col);
                 g.setColour (t.fg);
                 g.drawText (r.name, pill.withTrimmedLeft (24.0f).withTrimmedRight (8.0f), juce::Justification::centredLeft, true);
             }
+        }
 
         // MIDI zones, one per note name, clockwise from C at the top
         if (showZones())
@@ -549,6 +576,7 @@ void MapView::mouseDown (const juce::MouseEvent& e)
     }
 
     cursor.grabKeyboardFocus();
+    proc.mapHeld = true;
     if (recordArmed)
     {
         recording = true;
@@ -578,6 +606,7 @@ void MapView::mouseDrag (const juce::MouseEvent& e)
 
 void MapView::mouseUp (const juce::MouseEvent&)
 {
+    proc.mapHeld = false;
     if (heldNote >= 0)
     {
         proc.engine.pushNoteFromUI (heldNote, 0.0f, false);
@@ -605,13 +634,24 @@ void MapView::mouseMove (const juce::MouseEvent& e)
 {
     hoverMouse = e.position;
     const int h = nearestPoint (e.position, 10.0f);
-    if (h != hover) { hover = h; repaint(); }
+    const int near = nearestPoint (e.position, 22.0f);
+    const int hs = near >= 0 && corpus != nullptr ? corpus->sourceIndex[(size_t) near] : -1;
+    if (h != hover || hs != hoverSource) { hover = h; hoverSource = hs; repaint(); }
     else if (hover >= 0) repaint();
 }
 
 void MapView::mouseExit (const juce::MouseEvent&)
 {
-    if (hover >= 0) { hover = -1; repaint(); }
+    if (hover >= 0 || hoverSource >= 0) { hover = -1; hoverSource = -1; repaint(); }
+}
+
+void MapView::highlightSound (const juce::String& path)
+{
+    int found = -1;
+    if (corpus != nullptr && path.isNotEmpty())
+        for (size_t i = 0; i < corpus->sources.size(); ++i)
+            if (juce::String (corpus->sources[i].path) == path) { found = (int) i; break; }
+    if (found != listHighlight) { listHighlight = found; repaint(); }
 }
 
 //==============================================================================
@@ -652,7 +692,9 @@ void MapView::paintSpace (juce::Graphics& g)
     g.fillRect (getLocalBounds());
 
     const auto fmt = Spatial::formatFor ((int) proc.params.getRawParameterValue ("output")->load(),
-                                         proc.params.getRawParameterValue ("ringStart")->load() > 0.5f);
+                                         proc.params.getRawParameterValue ("ringStart")->load() > 0.5f,
+                                         proc.params.getRawParameterValue ("useCentre")->load() > 0.5f,
+                                         proc.params.getRawParameterValue ("lfe")->load() > 0.5f);
     const juce::Point<float> c (W * 0.5f, H * 0.5f);
     const float rx = W * 0.42f, ry = H * 0.42f;
     g.setColour (t.line);
@@ -700,18 +742,30 @@ void MapView::paintSpace (juce::Graphics& g)
     }
 
     // loudspeakers
-    auto speaker = [&] (const juce::String& text, float az)
+    auto speaker = [&] (const juce::String& text, float az, float radius = 1.0f, bool dim = false)
     {
-        const auto p = roomPoint (az, 1.0f);
-        auto r = juce::Rectangle<float> (26.0f, 26.0f).withCentre (p);
+        const auto p = roomPoint (az, radius);
+        g.setFont (s.font (12.5f, true));
+        const float w = juce::jmax (26.0f, juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), text) + 12.0f);
+        auto r = juce::Rectangle<float> (w, 26.0f).withCentre (p);
         g.setColour (t.panel);
         g.fillRoundedRectangle (r, 7.0f);
-        g.setColour (t.fg);
-        g.drawRoundedRectangle (r.reduced (0.75f), 7.0f, 1.5f);
-        g.setFont (s.font (12.5f, true));
+        g.setColour (dim ? t.muted.withAlpha (0.6f) : t.fg);
+        g.drawRoundedRectangle (r.reduced (0.75f), 7.0f, dim ? 1.0f : 1.5f);
         g.drawText (text, r, juce::Justification::centred);
     };
-    if (fmt.kind == Spatial::Kind::ring)
+    if (fmt.kind == Spatial::Kind::surround)
+    {
+        label ("Front", roomPoint (0.0f, 1.0f).translated (0.0f, -26.0f));
+        const auto& L = *fmt.layout;
+        for (int k = 0; k < (int) L.speakers.size(); ++k)
+        {
+            const auto& sp = L.speakers[(size_t) k];
+            if (! sp.lfe)
+                speaker (sp.name, sp.az, sp.el > 0.0f ? 0.62f : 1.0f, k == L.centreChannel && ! L.centreUsed);
+        }
+    }
+    else if (fmt.kind == Spatial::Kind::ring)
     {
         label ("Front", roomPoint (0.0f, 1.0f).translated (0.0f, -26.0f));
         for (int k = 0; k < fmt.channels; ++k)

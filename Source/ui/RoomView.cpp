@@ -208,7 +208,9 @@ void RoomView::refresh()
         rebuildHandles();
     }
     fmt = Spatial::formatFor ((int) proc.params.getRawParameterValue ("output")->load(),
-                              proc.params.getRawParameterValue ("ringStart")->load() > 0.5f);
+                              proc.params.getRawParameterValue ("ringStart")->load() > 0.5f,
+                              proc.params.getRawParameterValue ("useCentre")->load() > 0.5f,
+                              proc.params.getRawParameterValue ("lfe")->load() > 0.5f);
     const bool each = (int) proc.params.getRawParameterValue ("place")->load() == (int) Spatial::PlaceBy::eachSound;
     for (auto* h : handles)
     {
@@ -234,11 +236,20 @@ juce::String RoomView::describe() const
         return "Stereo, from left to right. New grains appear at the top and slide down as they fade.";
     if (fmt.kind == Spatial::Kind::ring)
         return juce::String (fmt.channels) + " speakers around you, seen from above. Each grain appears where it is heard, then fades.";
+    if (fmt.kind == Spatial::Kind::surround)
+        return juce::String (Spatial::outputNames[(int) proc.params.getRawParameterValue ("output")->load()])
+               + " seen from above. Channel order: " + juce::String (fmt.layout->channelOrder()) + ".";
     return "Ambisonics: the whole sphere around you. Drag to turn the view, double-click to reset.";
+}
+
+void RoomView::mouseUp (const juce::MouseEvent&)
+{
+    proc.mapHeld = false;
 }
 
 void RoomView::mouseDown (const juce::MouseEvent&)
 {
+    proc.mapHeld = true;      // "Sound plays: Clicking" also works on the room
     dragYaw = yaw;
     dragTilt = tilt;
 }
@@ -271,11 +282,14 @@ void RoomView::paint (juce::Graphics& g)
     // heading
     g.setColour (t.fg);
     g.setFont (s.font (17.0f, true));
-    const juce::String title = fmt.kind == Spatial::Kind::stereo ? "Stereo" : (fmt.kind == Spatial::Kind::ring ? "Room" : "Room in 3D");
+    const juce::String title = fmt.kind == Spatial::Kind::stereo ? "Stereo" : (fmt.kind == Spatial::Kind::ambisonics ? "Room in 3D" : "Room");
     g.drawText (title, juce::Rectangle<float> (20.0f, 14.0f, bounds.getWidth() - 40.0f, 22.0f), juce::Justification::centredLeft);
     juce::String sub;
     if (fmt.kind == Spatial::Kind::stereo) sub = "Left to right. Newest grains at the top, sliding down as they fade.";
     else if (fmt.kind == Spatial::Kind::ring) sub = juce::String (fmt.channels) + " speakers, seen from above. You are in the middle.";
+    else if (fmt.kind == Spatial::Kind::surround)
+        sub = juce::String (Spatial::outputNames[(int) proc.params.getRawParameterValue ("output")->load()])
+              + juce::String (fmt.layout->hasHeight ? ", seen from above. Height speakers are drawn inside the circle." : ", seen from above. You are in the middle.");
     else sub = juce::String ("Ambisonics, order ") + juce::String (fmt.order) + ": the whole sphere around you.";
     g.setColour (t.muted);
     g.setFont (s.font (13.5f));
@@ -293,14 +307,15 @@ void RoomView::paint (juce::Graphics& g)
         g.setColour (t.fg);
         g.drawText (text, r, juce::Justification::centred);
     };
-    auto speaker = [&] (const juce::String& text, juce::Point<float> p)
+    auto speaker = [&] (const juce::String& text, juce::Point<float> p, bool dim = false)
     {
-        auto r = juce::Rectangle<float> (26.0f, 26.0f).withCentre (p);
+        g.setFont (s.font (12.5f, true));
+        const float w = juce::jmax (26.0f, juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), text) + 12.0f);
+        auto r = juce::Rectangle<float> (w, 26.0f).withCentre (p);
         g.setColour (t.panel);
         g.fillRoundedRectangle (r, 7.0f);
-        g.setColour (t.fg);
-        g.drawRoundedRectangle (r.reduced (0.75f), 7.0f, 1.5f);
-        g.setFont (s.font (12.5f, true));
+        g.setColour (dim ? t.muted.withAlpha (0.6f) : t.fg);
+        g.drawRoundedRectangle (r.reduced (0.75f), 7.0f, dim ? 1.0f : 1.5f);
         g.drawText (text, r, juce::Justification::centred);
     };
     auto listener = [&] (juce::Point<float> c, juce::Point<float> towardsFront)
@@ -337,7 +352,7 @@ void RoomView::paint (juce::Graphics& g)
 
     juce::String legend = "Each mark is a grain: it appears where it is heard, then fades.";
 
-    if (fmt.kind == Spatial::Kind::ring)
+    if (fmt.kind == Spatial::Kind::ring || fmt.kind == Spatial::Kind::surround)
     {
         const auto c = area.getCentre();
         const float R = radius();
@@ -347,16 +362,40 @@ void RoomView::paint (juce::Graphics& g)
         g.drawEllipse (c.x - R * 0.5f, c.y - R * 0.5f, R, R, 1.0f);
         g.setColour (t.muted);
         g.drawEllipse (c.x - R, c.y - R, R * 2.0f, R * 2.0f, 1.5f);
+        const bool high = fmt.kind == Spatial::Kind::surround && fmt.layout->hasHeight;
+        if (high)
+        {
+            g.setColour (t.line);
+            g.drawEllipse (c.x - R * 0.62f, c.y - R * 0.62f, R * 1.24f, R * 1.24f, 1.0f);
+        }
         for (auto& m : marks)
-            drawGrainMark (g, m.shape, topPoint (m.az, m.dist), m.age, m.colour);
+        {
+            // with height speakers, higher grains sit closer to the middle and are drawn bigger
+            const float r = high ? m.dist * std::cos (m.el * degToRad) : m.dist;
+            const float size = high ? 1.0f + 0.5f * std::sin (juce::jmax (0.0f, m.el) * degToRad) : 1.0f;
+            drawGrainMark (g, m.shape, topPoint (m.az, r), m.age, m.colour, size);
+        }
         if (model)
         {
             const auto p = topPoint (proc.engine.modelAz.load(), proc.engine.modelDist.load());
             g.setColour (s.accent());
             g.drawEllipse (p.x - 11.0f, p.y - 11.0f, 22.0f, 22.0f, 3.0f);
         }
-        for (int k = 0; k < fmt.channels; ++k)
-            speaker (juce::String (k + 1), topPoint (fmt.speakerAngle (k), 1.0f));
+        if (fmt.kind == Spatial::Kind::ring)
+            for (int k = 0; k < fmt.channels; ++k)
+                speaker (juce::String (k + 1), topPoint (fmt.speakerAngle (k), 1.0f));
+        else
+        {
+            const auto& L = *fmt.layout;
+            for (int k = 0; k < (int) L.speakers.size(); ++k)
+            {
+                const auto& sp = L.speakers[(size_t) k];
+                if (sp.lfe) continue;
+                speaker (sp.name, topPoint (sp.az, sp.el > 0.0f ? 0.62f : 1.0f), k == L.centreChannel && ! L.centreUsed);
+            }
+            if (L.lfeChannel >= 0)
+                speaker (fmt.lfe ? "LFE on" : "LFE off", { area.getRight() - 40.0f, area.getBottom() - 16.0f }, ! fmt.lfe);
+        }
         pill ("Front", topPoint (0.0f, 1.0f).translated (0.0f, -30.0f));
         listener (c, c.translated (0.0f, -10.0f));
         legend << " In the middle = from every speaker.";

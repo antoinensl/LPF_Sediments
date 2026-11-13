@@ -21,4 +21,4 @@ and the standalone app goes to /Applications.
 
 Nothing else to install: libtorch is bundled inside the plugin.
 
-Source code and user guide: https://github.com/antoinensl/LPF_Sediments
+Source code and user guide: https://github.com/lifepassfilter/LPF_Sediments

@@ -37,6 +37,8 @@ public:
 
     // Interface state saved with the project (message thread only)
     std::map<juce::String, juce::Colour> soundColours;   // custom colour per file
+    std::atomic<bool> mapHeld { false };                  // mouse button down on the map ("While clicking")
+    std::atomic<bool> keyHeld { false };                  // Enter held on the map cursor (same, from the keyboard)
     std::map<juce::String, float> soundDirections;        // direction per file (degrees), "Each sound"
     void setSoundDirection (const juce::String& path, float degrees)
     {

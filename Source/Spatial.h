@@ -2,11 +2,13 @@
 
 #include <vector>
 #include <array>
+#include <string>
 #include "Corpus.h"
 
 namespace juce { class Random; }
 
-// Spreading sound over several outputs: stereo, a ring of loudspeakers, or
+// Spreading sound over several outputs: stereo, a ring of loudspeakers,
+// surround and Atmos beds (5.1 to 9.1.6, SMPTE / Dolby channel order), or
 // Ambisonics (AmbiX: ACN channel order, SN3D normalisation) up to 3rd order.
 //
 // Directions are in degrees, 0 = front, positive = clockwise (to the right),
@@ -16,7 +18,24 @@ namespace Spatial
 {
     constexpr int maxChannels = 16;
 
-    enum class Kind { stereo, ring, ambisonics };
+    enum class Kind { stereo, ring, ambisonics, surround };
+
+    // A surround / Atmos bed layout, with what VBAP panning needs.
+    struct SpeakerLayout
+    {
+        struct Speaker { const char* name; float az, el; bool lfe; };
+        std::vector<Speaker> speakers;              // in channel order
+        bool hasHeight = false;
+        int lfeChannel = -1, centreChannel = -1;
+        bool centreUsed = true;
+        int panCount = 0;                           // speakers that take part in panning
+        // panning: speaker triplets (3D) or neighbouring pairs (flat), with inverse matrices
+        struct Group { int idx[3]; int n; float inv[9]; };
+        std::vector<Group> groups;
+        std::vector<int> earLevel;                  // speakers that share a virtual one below
+        int nadir = -1;                             // index of the virtual speaker below (in a hidden slot)
+        std::string channelOrder() const;
+    };
 
     struct Format
     {
@@ -24,14 +43,17 @@ namespace Spatial
         int channels = 2;
         int order = 0;              // Ambisonics only
         bool frontCentre = false;   // ring: speaker 1 straight ahead (else the first pair straddles the front)
+        bool lfe = false;           // surround: feed the LFE channel with the whole mix (low-passed by the engine)
+        const SpeakerLayout* layout = nullptr;      // surround only
         float speakerAngle (int k) const noexcept;   // ring
     };
 
     // Index of the "Output" parameter -> format.
-    Format formatFor (int outputChoice, bool frontCentre);
+    Format formatFor (int outputChoice, bool frontCentre, bool useCentre = true, bool lfe = false);
     int channelsFor (int outputChoice);
     extern const char* const outputNames[];
-    constexpr int numOutputChoices = 12;
+    constexpr int numOutputChoices = 19;
+    constexpr int firstSurroundChoice = 12;
 
     struct Place
     {

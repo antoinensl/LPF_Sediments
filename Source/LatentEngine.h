@@ -53,9 +53,13 @@ public:
 
     // Space: output format (see Spatial::outputNames) and how grains are placed.
     std::atomic<int>   outputChoice { 0 }, placeBy { 0 }, heightMode { 0 };
-    std::atomic<bool>  frontCentre { false };
+    std::atomic<bool>  frontCentre { false }, useCentre { true }, lfeOn { false };
     std::atomic<float> spaceWidth { 1.0f }, scatter { 0.0f }, rotateSpeed { 0.0f };   // rotation in turns per second
     std::atomic<int>   hostOutputChannels { 2 };    // what the host gives us
+    // "Sound plays": when false, the synthesised sound fades out (the engine keeps running).
+    std::atomic<bool>  gateOpen { true };
+    std::atomic<double> hostRateForGate { 48000.0 };
+    float gateGain = 1.0f;                           // audio thread only
     // Per-sound direction (degrees, 0 = front, clockwise) for "Each sound".
     void setSoundDirections (const std::map<juce::String, float>& directions);
 

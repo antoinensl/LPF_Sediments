@@ -18,4 +18,4 @@ Nothing else to install: the plugin and libtorch are in this folder.
 You only need a RAVE model (.ts) if you want to play with a model;
 without one, the plugin plays your original sounds.
 
-Source code and user guide: https://github.com/antoinensl/LPF_Sediments
+Source code and user guide: https://github.com/lifepassfilter/LPF_Sediments

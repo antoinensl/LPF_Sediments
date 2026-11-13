@@ -31,6 +31,7 @@ public:
     void showHelp (bool show);
     void refreshNow() { timerCallback(); }
     void openLayoutChooser() { content->layoutButton.triggerClick(); }
+    void highlightSound (const juce::String& path) { content->map.highlightSound (path); }   // as when pointed at
 
 private:
     struct Content : public juce::Component

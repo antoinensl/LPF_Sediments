@@ -1,6 +1,6 @@
 # Sediments (prototype v0.9)
 
-[![Build](https://github.com/antoinensl/LPF_Sediments/actions/workflows/build.yml/badge.svg)](https://github.com/antoinensl/LPF_Sediments/actions/workflows/build.yml)
+[![Build](https://github.com/lifepassfilter/LPF_Sediments/actions/workflows/build.yml/badge.svg)](https://github.com/lifepassfilter/LPF_Sediments/actions/workflows/build.yml)
 
 An instrument plugin for Reaper (VST3, plus AU on macOS) that sits between two approaches: the **latent terrain** (inspired by [nn.terrain](https://jasper-zheng.github.io/nn_terrain/)) and **concatenative synthesis** (in the spirit of CataRT).
 
@@ -67,6 +67,8 @@ The first three tabs (shortcuts **1**, **2**, **3**) are three ways of moving ac
 
 Drag the cursor, or focus it and use the arrow keys (Shift for fine steps). The **You're hearing** strip says in plain words which sounds make up what you hear, with their proportions. Shift-click a mark (or press Space) to hear the original moment.
 
+Sound names stay hidden so the map remains readable: point at a group of marks (or at a sound in the list) and its name appears while its moments stand out and the others recede.
+
 ### Gesture (recorded paths)
 
 1. Click **Record** (or press **R**). The map gets a red outline.
@@ -94,7 +96,17 @@ Turn on **Play with MIDI notes** to make the plugin listen to the track's MIDI.
 
 To play: arm the plugin's track for recording and pick your MIDI keyboard as input, or write notes in a MIDI item on the track. The on-screen keyboard plays the zones too (and turns MIDI notes on automatically).
 
-Outside MIDI mode the sound is continuous (a drone) and follows X/Y.
+Outside MIDI mode, **Sound plays** (top of *Shape the sound*) decides when you hear it:
+
+| Sound plays | |
+|---|---|
+| **Always** | A continuous drone that follows X/Y (as in earlier versions). |
+| **Reaper plays** | Only while Reaper is playing or recording; silent when stopped. |
+| **Clicking** | Only while you hold the mouse on the map (or on the room in the Space tab), or hold Enter on the map cursor, or while a recorded gesture plays. |
+
+The sound fades in within 20 ms and out over 200 ms. With MIDI notes on, notes always play.
+
+If the sound stops whenever Reaper is not the active window, that comes from Reaper, not the plugin: untick *Preferences → Audio → Close audio device when stopped and application is inactive*.
 
 ## Space: multichannel and Ambisonics
 
@@ -108,6 +120,7 @@ The **Space** tab sends the sound to more than two outputs. Each grain of your o
 |---|---|---|
 | **Stereo** | 2 | Grains are placed between left and right (the front/back part of a direction is folded). |
 | **4 to 16 speakers** | 4, 5, 6, 7, 8, 10, 12 or 16 | A ring of loudspeakers, evenly spaced, numbered clockwise. **Speaker 1** is either just left of the front (the first pair straddles the front, as in most quad and octophonic setups) or straight ahead. Each grain is panned between the two nearest speakers, at constant power. |
+| **5.1, 7.1, 5.1.2, 5.1.4, 7.1.2, 7.1.4, 9.1.6** | 6 to 16 | Surround and Dolby Atmos beds, each channel in its standard place, in SMPTE / Dolby order (side surrounds before rear ones, heights last), for example 7.1.4: `L R C LFE Ls Rs Lrs Rrs Ltf Rtf Ltr Rtr`. Grains are panned with VBAP between the two or three speakers around them; with height speakers, the **Height** setting places grains above you (anything below the horizon goes to the ear-level speakers). **Use centre speaker**: untick to keep the centre free (front sounds then come from L and R). **Feed the LFE**: sends the lows of the whole mix (below 120 Hz, 24 dB/octave) to the LFE channel; it does not remove the lows from the other speakers, leave that to your monitoring's bass management. These are channel beds, not Atmos objects: for an Atmos master, route them into a Dolby renderer. |
 | **Ambisonics 1st, 2nd, 3rd order** | 4, 9 or 16 | AmbiX format (ACN channel order, SN3D normalisation), with height. Decode it afterwards for any speaker layout, or for headphones with a binaural decoder (for example the free [IEM Plug-in Suite](https://plugins.iem.at/): BinauralDecoder, AllRADecoder). A 16-channel render also works as a sound sphere in game engines: Wwise imports AmbiX up to 5th order, Unity accepts ACN/SN3D clips up to 3rd order (with a third-party ambisonic decoder). |
 
 The plugin has 16 outputs. **In Reaper, give the track enough channels**: click the track's **Routing** button, then set **Track channels** (8 for 8 speakers, 16 for 3rd-order Ambisonics; Reaper only offers even numbers, so 10 for 2nd order). On a stereo track only the first two outputs are heard. Then route the track to your speaker outputs, or put a decoder after the plugin.
@@ -140,6 +153,7 @@ What the Space tab shows:
   - **Stereo**: left to right; new grains appear at the top and slide down as they age.
   - **Ambisonics**: the whole sphere in 3D. A dotted line drops from each grain to the floor (the horizontal plane through your ears), with a small shadow, so you can tell above from below; nearer grains are drawn bigger. Drag to turn the view, double-click to reset.
 - The **Each sound** handles sit on the edge of the room (on the floor circle in 3D).
+- Surround and Atmos beds are seen from above, speakers named (height speakers inside the circle, the LFE in a corner).
 - **Calm motion** (Settings) removes the pop and keeps a plain fade.
 
 ![8 speakers, placed by pitch](docs/screens/20_space_ring_pitch.png)

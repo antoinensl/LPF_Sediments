@@ -18,7 +18,8 @@ SedimentsProcessor::SedimentsProcessor()
     pDry   = params.getRawParameterValue ("dry");
     for (auto* id : { "source", "grain", "flow", "flowSpeed", "pathOn", "pathSync", "pathSpeed", "pathDir", "pathAnchor",
                       "midiMode", "spray", "attack", "release",
-                      "output", "ringStart", "place", "height", "width", "scatter", "rotate" })
+                      "output", "ringStart", "place", "height", "width", "scatter", "rotate", "playMode",
+                      "useCentre", "lfe" })
         raw[id] = params.getRawParameterValue (id);
 }
 
@@ -86,6 +87,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout SedimentsProcessor::createLa
                     AudioParameterFloatAttributes().withStringFromValueFunction ([] (float v, int)
                         { return v < 1.0f ? String (roundToInt (v * 1000.0f)) + " ms" : String (v, 2) + " s"; })));
 
+    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "playMode", 1 }, "Sound plays",
+                    StringArray { "Always", "While Reaper plays", "While clicking the map" }, 0));
+
     // Space
     StringArray outputs;
     for (int i = 0; i < Spatial::numOutputChoices; ++i)
@@ -93,6 +97,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout SedimentsProcessor::createLa
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "output", 1 }, "Output", outputs, 0));
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "ringStart", 1 }, "Speaker 1",
                     StringArray { "Front left", "Front centre" }, 0));
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { "useCentre", 1 }, "Use centre speaker", true));
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { "lfe", 1 }, "Feed the LFE", false));
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "place", 1 }, "Place grains by",
                     StringArray { "Centre", "Map", "Each sound", "Pitch", "Brightness", "Noisiness", "Loudness" }, 0));
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "height", 1 }, "Height",
@@ -163,6 +169,8 @@ void SedimentsProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     engine.releaseSec  = raw["release"]->load();
     engine.outputChoice = (int) raw["output"]->load();
     engine.frontCentre  = raw["ringStart"]->load() > 0.5f;
+    engine.useCentre    = raw["useCentre"]->load() > 0.5f;
+    engine.lfeOn        = raw["lfe"]->load() > 0.5f;
     engine.placeBy      = (int) raw["place"]->load();
     engine.heightMode   = (int) raw["height"]->load();
     engine.spaceWidth   = raw["width"]->load();
@@ -181,6 +189,19 @@ void SedimentsProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
             if (auto b = pos->getBpm()) bpm = *b;
         }
     engine.setTransport (playing, ppq, bpm);
+
+    // When the sound may be heard (MIDI notes have their own envelope and always play).
+    {
+        const int playMode = (int) raw["playMode"]->load();
+        bool open = true;
+        if (! engine.midiMode.load())
+        {
+            if (playMode == 1) open = playing;
+            else if (playMode == 2) open = mapHeld.load() || keyHeld.load() || engine.pathOn.load();   // a gesture is a hand on the map
+        }
+        engine.gateOpen = open;
+        engine.hostRateForGate = getSampleRate();
+    }
 
     for (const auto meta : midiMessages)
     {

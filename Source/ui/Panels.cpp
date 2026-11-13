@@ -570,16 +570,21 @@ SpacePanel::SpacePanel (SedimentsProcessor& p)
           const float rpm = std::abs (v) * 60.0f;
           return juce::String (rpm, rpm < 10.0f ? 1 : 0) + " turns/min";
       }),
-      outputGroup ("Output", output), placeGroup ("Place grains by", place), heightGroup ("Height (Ambisonics)", height),
+      outputGroup ("Output", output), placeGroup ("Place grains by", place), heightGroup ("Height", height),
       ringGroup ("Speaker 1", ringStart)
 {
     output.menuSection = [] (int i, const juce::String&) -> juce::String
     {
         if (i == 1) return "Ring of loudspeakers";
         if (i == 9) return "Ambisonics (AmbiX)";
+        if (i == Spatial::firstSurroundChoice) return "Surround and Atmos beds";
         return {};
     };
     ringStart.attachToChoice (*param (p, "ringStart"));
+    centreAttach = std::make_unique<juce::ButtonParameterAttachment> (*param (p, "useCentre"), centre);
+    lfeAttach = std::make_unique<juce::ButtonParameterAttachment> (*param (p, "lfe"), lfe);
+    addChildComponent (centre);
+    addChildComponent (lfe);
     evenly.setTooltip ("Put every sound back at an even spacing around the circle");
     evenly.onClick = [this]
     {
@@ -602,10 +607,15 @@ void SpacePanel::refresh()
     const auto fmt = Spatial::formatFor (choice, false);
     const auto by = (Spatial::PlaceBy) (int) proc.params.getRawParameterValue ("place")->load();
     const bool ring = fmt.kind == Spatial::Kind::ring, ambi = fmt.kind == Spatial::Kind::ambisonics;
+    const bool surround = fmt.kind == Spatial::Kind::surround;
+    const bool heights = ambi || (surround && fmt.layout->hasHeight);
     const bool each = by == Spatial::PlaceBy::eachSound;
-    bool relayout = ringGroup.isVisible() != ring || heightGroup.isVisible() != ambi || evenlyBox.isVisible() != each;
+    bool relayout = ringGroup.isVisible() != ring || heightGroup.isVisible() != heights || evenlyBox.isVisible() != each
+                    || centre.isVisible() != surround;
     ringGroup.setVisible (ring);
-    heightGroup.setVisible (ambi);
+    heightGroup.setVisible (heights);
+    centre.setVisible (surround);
+    lfe.setVisible (surround);
     evenlyBox.setVisible (each);
     width.setEnabled (by != Spatial::PlaceBy::centre && ! each);
 
@@ -627,6 +637,8 @@ void SpacePanel::refresh()
           << " channels or more (Routing button on the track, then Track channels).";
         if (ambi)
             n << " AmbiX format: listen through a decoder after it, for example IEM BinauralDecoder on headphones.";
+        if (surround)
+            n << " Channel order: " << juce::String (fmt.layout->channelOrder()) << ".";
     }
     const bool modelOnly = proc.engine.getModelDescription().isNotEmpty() && ! proc.engine.isWithoutModel()
                            && proc.params.getRawParameterValue ("source")->load() < 0.01f;
@@ -655,6 +667,8 @@ std::vector<FlowItem> SpacePanel::items()
     if (ringGroup.isVisible()) v.push_back ({ &ringGroup, ringStart.preferredWidth(), 66, 20 });
     v.push_back ({ &placeGroup, juce::jmax (170, place.idealWidth (44) + 8), 66, 20 });
     if (heightGroup.isVisible()) v.push_back ({ &heightGroup, juce::jmax (170, height.idealWidth (44) + 8), 66, 20 });
+    if (centre.isVisible()) v.push_back ({ &centre, 230, 66, 12 });
+    if (lfe.isVisible()) v.push_back ({ &lfe, 230, 66, 20 });
     if (evenlyBox.isVisible()) v.push_back ({ &evenlyBox, evenly.idealWidth (44), 66, 20 });
     v.push_back ({ &width, 180, 66, 20 });
     v.push_back ({ &scatter, 180, 66, 20 });
@@ -1063,6 +1077,11 @@ ShapeCard::ShapeCard (SedimentsProcessor& p)
     terrain.slider.setTooltip ("Your sounds: blends the moments around the cursor. Learned: a small network invents what lies between them.");
     flow.slider.setTooltip ("Let each sound keep moving the way it did in the recording, even when the cursor is still");
     grain.slider.setTooltip ("Length of the pieces of your recordings that are played (originals only)");
+    playSeg.attachToChoice (*param (p, "playMode"));
+    playSeg.setDescription ("Always: a continuous drone. Reaper plays: only while Reaper is playing or recording. "
+                            "Clicking: only while you hold the mouse on the map (or Enter on the map cursor), or while a gesture plays. "
+                            "MIDI notes always play.");
+    addAndMakeVisible (playGroup);
     addAndMakeVisible (more);
     more.setTitle ("More settings: flow speed and input");
     more.onClick = [this]
@@ -1105,7 +1124,7 @@ void ShapeCard::refresh()
 
 int ShapeCard::preferredHeight() const
 {
-    return 12 + 32 + (int) visibleSliders().size() * (66 + 4) + 44 + 12;
+    return 12 + 32 + 70 + (int) visibleSliders().size() * (66 + 4) + 44 + 12;
 }
 
 void ShapeCard::paint (juce::Graphics& g)
@@ -1120,6 +1139,8 @@ void ShapeCard::resized()
 {
     auto b = getLocalBounds().reduced (16, 12);
     b.removeFromTop (32);
+    playGroup.setBounds (b.removeFromTop (66));
+    b.removeFromTop (4);
     auto shown = visibleSliders();
     for (auto* s : { &source, &focus, &terrain, &glide, &flow, &grain, &flowSpeed, &dry })
         s->setVisible (std::find (shown.begin(), shown.end(), s) != shown.end());

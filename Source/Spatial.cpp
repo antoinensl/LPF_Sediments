@@ -8,7 +8,8 @@ namespace Spatial
 {
     const char* const outputNames[] = {
         "Stereo", "4 speakers", "5 speakers", "6 speakers", "7 speakers", "8 speakers", "10 speakers",
-        "12 speakers", "16 speakers", "Ambisonics 1st order", "Ambisonics 2nd order", "Ambisonics 3rd order"
+        "12 speakers", "16 speakers", "Ambisonics 1st order", "Ambisonics 2nd order", "Ambisonics 3rd order",
+        "5.1", "7.1", "5.1.2", "5.1.4", "7.1.2", "7.1.4", "9.1.6"
     };
 
     static constexpr int ringSizes[] = { 2, 4, 5, 6, 7, 8, 10, 12, 16 };
@@ -22,14 +23,203 @@ namespace Spatial
         return deg - 180.0f;
     }
 
-    Format formatFor (int choice, bool frontCentre)
+    //==========================================================================
+    // Surround and Atmos beds, SMPTE / Dolby channel order (side surrounds before rear ones).
+    static std::vector<SpeakerLayout::Speaker> presetSpeakers (int preset)
+    {
+        using S = SpeakerLayout::Speaker;
+        std::vector<S> v { { "L", -30, 0, false }, { "R", 30, 0, false }, { "C", 0, 0, false }, { "LFE", 0, 0, true } };
+        const bool sevenOne = preset == 1 || preset == 4 || preset == 5 || preset == 6;
+        if (sevenOne)
+        {
+            v.push_back ({ "Ls", -90, 0, false });   v.push_back ({ "Rs", 90, 0, false });
+            v.push_back ({ "Lrs", -150, 0, false }); v.push_back ({ "Rrs", 150, 0, false });
+        }
+        else
+        {
+            v.push_back ({ "Ls", -110, 0, false });  v.push_back ({ "Rs", 110, 0, false });
+        }
+        if (preset == 6)
+        {
+            v.push_back ({ "Lw", -60, 0, false });   v.push_back ({ "Rw", 60, 0, false });
+        }
+        const bool two = preset == 2 || preset == 4, four = preset == 3 || preset == 5;
+        if (two)
+        {
+            v.push_back ({ "Ltm", -90, 45, false }); v.push_back ({ "Rtm", 90, 45, false });
+        }
+        if (four || preset == 6)
+        {
+            v.push_back ({ "Ltf", -45, 45, false }); v.push_back ({ "Rtf", 45, 45, false });
+            if (preset == 6) { v.push_back ({ "Ltm", -90, 45, false }); v.push_back ({ "Rtm", 90, 45, false }); }
+            v.push_back ({ "Ltr", -135, 45, false }); v.push_back ({ "Rtr", 135, 45, false });
+        }
+        return v;
+    }
+
+    struct V3 { float x, y, z; };
+    static V3 dirVec (float az, float el)
+    {
+        return { std::cos (rad (el)) * std::sin (rad (az)), std::cos (rad (el)) * std::cos (rad (az)), std::sin (rad (el)) };
+    }
+
+    static bool invert3 (const V3& a, const V3& b, const V3& c, float* inv)
+    {
+        // rows a, b, c; inverse in row-major order
+        const float m[9] = { a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z };
+        const float det = m[0] * (m[4] * m[8] - m[5] * m[7]) - m[1] * (m[3] * m[8] - m[5] * m[6]) + m[2] * (m[3] * m[7] - m[4] * m[6]);
+        if (std::abs (det) < 1e-5f) return false;
+        const float d = 1.0f / det;
+        inv[0] = (m[4] * m[8] - m[5] * m[7]) * d; inv[1] = (m[2] * m[7] - m[1] * m[8]) * d; inv[2] = (m[1] * m[5] - m[2] * m[4]) * d;
+        inv[3] = (m[5] * m[6] - m[3] * m[8]) * d; inv[4] = (m[0] * m[8] - m[2] * m[6]) * d; inv[5] = (m[2] * m[3] - m[0] * m[5]) * d;
+        inv[6] = (m[3] * m[7] - m[4] * m[6]) * d; inv[7] = (m[1] * m[6] - m[0] * m[7]) * d; inv[8] = (m[0] * m[4] - m[1] * m[3]) * d;
+        return true;
+    }
+
+    static SpeakerLayout buildLayout (int preset, bool useCentre)
+    {
+        SpeakerLayout L;
+        L.speakers = presetSpeakers (preset);
+        std::vector<int> used;                       // speakers that take part in panning
+        for (int i = 0; i < (int) L.speakers.size(); ++i)
+        {
+            const auto& s = L.speakers[(size_t) i];
+            if (s.lfe) { L.lfeChannel = i; continue; }
+            if (std::string (s.name) == "C") { L.centreChannel = i; L.centreUsed = useCentre; if (! useCentre) continue; }
+            if (s.el != 0.0f) L.hasHeight = true;
+            used.push_back (i);
+        }
+        L.panCount = (int) used.size();
+        if (! L.hasHeight)
+        {
+            // flat: neighbouring pairs around the circle
+            std::sort (used.begin(), used.end(), [&] (int a, int b) { return L.speakers[(size_t) a].az < L.speakers[(size_t) b].az; });
+            for (size_t k = 0; k < used.size(); ++k)
+            {
+                const int a = used[k], b = used[(k + 1) % used.size()];
+                const V3 va = dirVec (L.speakers[(size_t) a].az, 0), vb = dirVec (L.speakers[(size_t) b].az, 0);
+                const float det = va.x * vb.y - va.y * vb.x;
+                if (std::abs (det) < 1e-5f) continue;
+                SpeakerLayout::Group g { { a, b, -1 }, 2, {} };
+                g.inv[0] = vb.y / det;  g.inv[1] = -va.y / det;     // row-major 2x2 inverse
+                g.inv[2] = -vb.x / det; g.inv[3] = va.x / det;
+                L.groups.push_back (g);
+            }
+            return L;
+        }
+
+        // 3D: faces of the convex hull of the speakers plus a virtual speaker right below
+        std::vector<V3> pts;
+        std::vector<int> idx;
+        for (int i : used) { pts.push_back (dirVec (L.speakers[(size_t) i].az, L.speakers[(size_t) i].el)); idx.push_back (i); }
+        for (int i : used) if (L.speakers[(size_t) i].el == 0.0f) L.earLevel.push_back (i);
+        L.nadir = (int) L.speakers.size();          // not a real channel
+        pts.push_back ({ 0.0f, 0.0f, -1.0f });
+        idx.push_back (L.nadir);
+        const int n = (int) pts.size();
+        for (int a = 0; a < n; ++a)
+            for (int b = a + 1; b < n; ++b)
+                for (int c = b + 1; c < n; ++c)
+                {
+                    const V3 u { pts[(size_t) b].x - pts[(size_t) a].x, pts[(size_t) b].y - pts[(size_t) a].y, pts[(size_t) b].z - pts[(size_t) a].z };
+                    const V3 w { pts[(size_t) c].x - pts[(size_t) a].x, pts[(size_t) c].y - pts[(size_t) a].y, pts[(size_t) c].z - pts[(size_t) a].z };
+                    const V3 nn { u.y * w.z - u.z * w.y, u.z * w.x - u.x * w.z, u.x * w.y - u.y * w.x };
+                    bool above = false, below = false;
+                    for (int m = 0; m < n && ! (above && below); ++m)
+                    {
+                        if (m == a || m == b || m == c) continue;
+                        const float s = nn.x * (pts[(size_t) m].x - pts[(size_t) a].x) + nn.y * (pts[(size_t) m].y - pts[(size_t) a].y)
+                                        + nn.z * (pts[(size_t) m].z - pts[(size_t) a].z);
+                        if (s > 1e-4f) above = true;
+                        if (s < -1e-4f) below = true;
+                    }
+                    if (above && below) continue;
+                    SpeakerLayout::Group g { { idx[(size_t) a], idx[(size_t) b], idx[(size_t) c] }, 3, {} };
+                    if (invert3 (pts[(size_t) a], pts[(size_t) b], pts[(size_t) c], g.inv))
+                        L.groups.push_back (g);
+                }
+        return L;
+    }
+
+    static const SpeakerLayout& layoutFor (int preset, bool useCentre)
+    {
+        static const auto all = []
+        {
+            std::vector<SpeakerLayout> v;
+            for (int p = 0; p < numOutputChoices - firstSurroundChoice; ++p)
+                for (int c = 0; c < 2; ++c)
+                    v.push_back (buildLayout (p, c == 1));
+            return v;
+        }();
+        return all[(size_t) (preset * 2 + (useCentre ? 1 : 0))];
+    }
+
+    std::string SpeakerLayout::channelOrder() const
+    {
+        std::string s;
+        for (auto& sp : speakers) { if (! s.empty()) s += " "; s += sp.name; }
+        return s;
+    }
+
+    // VBAP: power-normalised gains for a direction, per real channel.
+    static void vbap (const SpeakerLayout& L, float az, float el, float* out)
+    {
+        const V3 p = dirVec (az, L.hasHeight ? el : 0.0f);
+        float best[3] = {}; int bestIdx[3] = { -1, -1, -1 }; float bestMin = -1e9f; int bestN = 0;
+        for (auto& g : L.groups)
+        {
+            float v[3];
+            if (g.n == 2)
+            {
+                v[0] = p.x * g.inv[0] + p.y * g.inv[2];
+                v[1] = p.x * g.inv[1] + p.y * g.inv[3];
+                v[2] = 0.0f;
+            }
+            else
+                for (int j = 0; j < 3; ++j)
+                    v[j] = p.x * g.inv[j] + p.y * g.inv[3 + j] + p.z * g.inv[6 + j];
+            float mn = juce::jmin (v[0], v[1]);
+            if (g.n == 3) mn = juce::jmin (mn, v[2]);
+            if (mn > bestMin)
+            {
+                bestMin = mn; bestN = g.n;
+                for (int j = 0; j < 3; ++j) { best[j] = juce::jmax (0.0f, v[j]); bestIdx[j] = g.idx[j]; }
+                if (mn >= -1e-4f) break;
+            }
+        }
+        float power = 0.0f;
+        for (int j = 0; j < bestN; ++j) power += best[j] * best[j];
+        const float norm = power > 1e-12f ? 1.0f / std::sqrt (power) : 0.0f;
+        for (int j = 0; j < bestN; ++j)
+        {
+            const int i = bestIdx[j];
+            const float gain = best[j] * norm;
+            if (i == L.nadir)
+            {
+                // nothing below: the ear-level speakers share it
+                const float share = gain * gain / (float) juce::jmax<size_t> (1, L.earLevel.size());
+                for (int e : L.earLevel) out[e] = std::sqrt (out[e] * out[e] + share);
+            }
+            else if (i >= 0 && i < maxChannels)
+                out[i] = std::sqrt (out[i] * out[i] + gain * gain);
+        }
+    }
+
+    Format formatFor (int choice, bool frontCentre, bool useCentre, bool lfe)
     {
         Format f;
         choice = juce::jlimit (0, numOutputChoices - 1, choice);
         f.frontCentre = frontCentre;
         if (choice == 0) { f.kind = Kind::stereo; f.channels = 2; }
         else if (choice < 9) { f.kind = Kind::ring; f.channels = ringSizes[choice]; }
-        else { f.kind = Kind::ambisonics; f.order = choice - 8; f.channels = (f.order + 1) * (f.order + 1); }
+        else if (choice < firstSurroundChoice) { f.kind = Kind::ambisonics; f.order = choice - 8; f.channels = (f.order + 1) * (f.order + 1); }
+        else
+        {
+            f.kind = Kind::surround;
+            f.layout = &layoutFor (choice - firstSurroundChoice, useCentre);
+            f.channels = (int) f.layout->speakers.size();
+            f.lfe = lfe;
+        }
         return f;
     }
 
@@ -117,6 +307,21 @@ namespace Spatial
             pw[k1] += std::sin (frac * pi * 0.5f);
             for (int c = 0; c < n; ++c)
                 g[c] = std::sqrt (2.0f) * std::sqrt (dist * pw[c] * pw[c] + (1.0f - dist) / (float) n);
+        }
+        else if (f.kind == Kind::surround && f.layout != nullptr)
+        {
+            const auto& L = *f.layout;
+            const bool high = L.hasHeight;
+            const float d = juce::jlimit (0.0f, 1.0f, high ? p.ambiDist : dist);
+            float pw[maxChannels] = {};
+            vbap (L, p.az, p.el, pw);
+            for (int c = 0; c < f.channels; ++c)
+            {
+                if (c == L.lfeChannel || (c == L.centreChannel && ! L.centreUsed)) continue;
+                g[c] = std::sqrt (2.0f) * std::sqrt (d * pw[c] * pw[c] + (1.0f - d) / (float) juce::jmax (1, L.panCount));
+            }
+            if (f.lfe && L.lfeChannel >= 0)
+                g[L.lfeChannel] = 1.0f;    // the whole mix; the engine keeps only the lows
         }
         else
             encodeSH (p.az, p.el, juce::jlimit (0.0f, 1.0f, p.ambiDist), f.order, g);
