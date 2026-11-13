@@ -15,7 +15,7 @@ A [Life Pass Filter](https://lifepassfilter.com) project. Fonts: Atkinson Hyperl
 GitHub builds the plugin automatically on every update, so you don't need Visual Studio or libtorch.
 
 1. On the repository page, in the right-hand column, open **Releases** and pick the latest version.
-2. Download `Sediments-Windows.zip` or `Sediments-macOS.zip` (Apple Silicon Mac: M1, M2, M3…, macOS 14 Sonoma or later).
+2. Download `LPF-Sediments-Windows.zip` or `LPF-Sediments-macOS.zip` (Apple Silicon Mac: M1, M2, M3…, macOS 14 Sonoma or later).
 3. Unzip it and follow `README.txt`: on Windows, double-click `INSTALL.bat`; on macOS, right-click `Install.command` and choose **Open**.
 
 The very latest work-in-progress builds are also in the **Actions** tab (open the latest successful run, then **Artifacts** at the bottom of the page). They are kept for 14 days, and you need to be signed in to GitHub to download them.

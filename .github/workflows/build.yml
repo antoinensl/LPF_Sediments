@@ -65,18 +65,18 @@ jobs:
       - name: Package
         shell: pwsh
         run: |
-          $out = "Sediments-Windows"
+          $out = "LPF-Sediments-Windows"
           New-Item -ItemType Directory "$out/libtorch" | Out-Null
           Copy-Item "build/Sediments_artefacts/Release/VST3/Sediments.vst3" $out -Recurse
           Copy-Item "libtorch/lib/*.dll" "$out/libtorch"
           Copy-Item "packaging/windows/*" $out
-          7z a -tzip Sediments-Windows.zip $out | Out-Null
-          Get-Item Sediments-Windows.zip | Select-Object Name, Length
+          7z a -tzip LPF-Sediments-Windows.zip $out | Out-Null
+          Get-Item LPF-Sediments-Windows.zip | Select-Object Name, Length
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Sediments-Windows
-          path: Sediments-Windows.zip
+          name: LPF-Sediments-Windows
+          path: LPF-Sediments-Windows.zip
           retention-days: 14
 
   macos:
@@ -125,7 +125,7 @@ jobs:
 
       - name: Package
         run: |
-          out=Sediments-macOS
+          out=LPF-Sediments-macOS
           mkdir "$out"
           cp -R build/Sediments_artefacts/Release/VST3/Sediments.vst3 "$out/"
           cp -R build/Sediments_artefacts/Release/AU/Sediments.component "$out/"
@@ -136,13 +136,13 @@ jobs:
           for b in "$out/Sediments.vst3" "$out/Sediments.component" "$out/Sediments.app"; do
             codesign --force --deep --sign - "$b"
           done
-          ditto -c -k --keepParent "$out" Sediments-macOS.zip
-          ls -lh Sediments-macOS.zip
+          ditto -c -k --keepParent "$out" LPF-Sediments-macOS.zip
+          ls -lh LPF-Sediments-macOS.zip
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Sediments-macOS
-          path: Sediments-macOS.zip
+          name: LPF-Sediments-macOS
+          path: LPF-Sediments-macOS.zip
           retention-days: 14
 
   # Publishes a Release when the version in CMakeLists.txt has none yet
@@ -181,5 +181,5 @@ jobs:
           gh release create "${{ steps.version.outputs.tag }}" dist/*.zip \
             --target "$GITHUB_SHA" \
             --title "Sediments ${{ steps.version.outputs.tag }}" \
-            --notes "Windows: Sediments-Windows.zip (unzip, then double-click INSTALL.bat). Apple Silicon Mac, macOS 14 or later: Sediments-macOS.zip (right-click Install.command, then Open). See README.txt in each zip." \
+            --notes "Windows: LPF-Sediments-Windows.zip (unzip, then double-click INSTALL.bat). Apple Silicon Mac, macOS 14 or later: LPF-Sediments-macOS.zip (right-click Install.command, then Open). See README.txt in each zip." \
             --generate-notes
