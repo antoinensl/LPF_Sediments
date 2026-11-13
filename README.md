@@ -290,3 +290,9 @@ The workflow in `.github/workflows/build.yml` builds Windows and macOS on every 
 
 To build the test tools: `-DLT_BUILD_CLI=ON` and `-DLT_BUILD_SNAPSHOT=ON`. Example: `sediments_cli model.ts out.wav a.wav b.wav` renders a 10-second circular walk across the map (`none` instead of a model file plays the originals without a model).
 Multichannel renders: `LT_OUTPUT` (0 stereo, 1-8 rings of 4 to 16 speakers, 9-11 Ambisonics orders 1 to 3), `LT_PLACE` (0 centre … 6 loudness), `LT_HEIGHT`, `LT_SCATTER`, `LT_ROTATE`, `LT_WIDTH` write a WAV with as many channels as the format uses.
+
+## License
+
+© 2026 Antoine Boucherikha (Life Pass Filter). Sediments is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License, version 3 (see `LICENSE`). It comes with no warranty.
+
+It is built with JUCE (used under AGPLv3) and other open-source components listed in `THIRD_PARTY_NOTICES.md`. Every release zip includes these files.

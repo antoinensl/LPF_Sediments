@@ -70,6 +70,8 @@ jobs:
           Copy-Item "build/Sediments_artefacts/Release/VST3/Sediments.vst3" $out -Recurse
           Copy-Item "libtorch/lib/*.dll" "$out/libtorch"
           Copy-Item "packaging/windows/*" $out
+          Copy-Item LICENSE, THIRD_PARTY_NOTICES.md $out
+          Copy-Item licenses $out -Recurse
           7z a -tzip LPF-Sediments-Windows.zip $out | Out-Null
           Get-Item LPF-Sediments-Windows.zip | Select-Object Name, Length
 
@@ -131,6 +133,8 @@ jobs:
           cp -R build/Sediments_artefacts/Release/AU/Sediments.component "$out/"
           cp -R build/Sediments_artefacts/Release/Standalone/Sediments.app "$out/"
           cp packaging/macos/* "$out/"
+          cp LICENSE THIRD_PARTY_NOTICES.md "$out/"
+          cp -R licenses "$out/"
           chmod +x "$out/Install.command"
           # ad-hoc signature (free; enough for the plugin to load on your own Mac)
           for b in "$out/Sediments.vst3" "$out/Sediments.component" "$out/Sediments.app"; do
