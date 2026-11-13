@@ -783,8 +783,15 @@ void MapView::paintSpace (juce::Graphics& g)
         label ("Back", roomPoint (180.0f, 1.0f).translated (0.0f, 20.0f));
         label ("Left", roomPoint (-90.0f, 1.0f).translated (-10.0f, 0.0f));
         label ("Right", roomPoint (90.0f, 1.0f).translated (10.0f, 0.0f));
-        if ((int) proc.params.getRawParameterValue ("height")->load() > 0)
+        const auto heightMode = (Spatial::Height) (int) proc.params.getRawParameterValue ("height")->load();
+        if (heightMode != Spatial::Height::flat)
             label ("Above", c.translated (0.0f, -22.0f));
+        if (heightMode == Spatial::Height::sphere)
+        {
+            // the inner ring is the horizon, the edge and the corners are below you
+            label ("Horizon", c.translated (rx * 0.5f * 0.7071f, ry * 0.5f * 0.7071f));
+            label ("Below", { W - 40.0f, H - 16.0f });
+        }
     }
 
 }

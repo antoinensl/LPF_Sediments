@@ -58,7 +58,7 @@ namespace Spatial
     struct Place
     {
         float az = 0.0f, el = 0.0f, dist = 0.0f;
-        float ambiDist = 0.0f;      // Ambisonics: may differ (on the dome, the middle is above, not everywhere)
+        float ambiDist = 0.0f;      // Ambisonics: may differ (on the dome or sphere, the middle is above, not everywhere)
     };
 
     // Gains for a sound coming from `place`. For each output channel c, the
@@ -69,7 +69,8 @@ namespace Spatial
 
     // Placement settings, read by the synthesis thread.
     enum class PlaceBy { centre = 0, map, eachSound, pitch, brightness, noisiness, loudness };
-    enum class Height { flat = 0, dome, pitch, brightness, noisiness, loudness };
+    // sphere comes last so that sessions saved with older versions keep their setting
+    enum class Height { flat = 0, dome, pitch, brightness, noisiness, loudness, sphere };
 
     struct Placer
     {

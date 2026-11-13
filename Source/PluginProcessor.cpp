@@ -102,7 +102,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout SedimentsProcessor::createLa
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "place", 1 }, "Place grains by",
                     StringArray { "Centre", "Map", "Each sound", "Pitch", "Brightness", "Noisiness", "Loudness" }, 0));
     layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "height", 1 }, "Height",
-                    StringArray { "Flat", "Dome", "Pitch", "Brightness", "Noisiness", "Loudness" }, 0));
+                    StringArray { "Flat", "Dome", "Pitch", "Brightness", "Noisiness", "Loudness", "Sphere" }, 0));
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "width", 1 }, "Width", 0.0f, 1.0f, 1.0f));
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "scatter", 1 }, "Scatter", 0.0f, 1.0f, 0.0f));
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "rotate", 1 }, "Rotation",

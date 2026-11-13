@@ -724,7 +724,7 @@ void LatentEngine::workerLoop()
                 }
             }
             placer.by = (Spatial::PlaceBy) juce::jlimit (0, 6, placeBy.load());
-            placer.height = (Spatial::Height) juce::jlimit (0, 5, heightMode.load());
+            placer.height = (Spatial::Height) juce::jlimit (0, 6, heightMode.load());
             placer.width = juce::jlimit (0.0f, 1.0f, spaceWidth.load());
             placer.scatter = juce::jlimit (0.0f, 1.0f, scatter.load());
             rotationDeg = (float) std::fmod (rotationDeg + rotateSpeed.load() * 360.0 * frameSeconds, 360.0);

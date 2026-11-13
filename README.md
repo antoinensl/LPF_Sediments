@@ -141,7 +141,7 @@ The plugin has 16 outputs. **In Reaper, give the track enough channels**: click 
 | **Width** | 100 % = all around; lower values gather the directions towards the front (does not change directions set by hand). |
 | **Scatter** | Random spread around the computed place: 0 = exact, 100 % = a grain can come from anywhere. Also lifts grains away from the centre. |
 | **Rotation** | Turns the whole scene, clockwise or anticlockwise, up to 60 turns a minute. |
-| **Height** (Ambisonics) | **Flat**, **Dome** (the middle of the map is right above you, its edges on the horizon), or **Pitch / Brightness / Noisiness / Loudness** over the whole sphere (high values above, low values below, from about −85° to +85°). |
+| **Height** (Ambisonics) | **Flat**, **Dome** (the middle of the map is right above you, its edges on the horizon), **Sphere** (the whole map wrapped around you: the middle right above, half-way out on the horizon, the edges and corners right below, so grains fill the lower half too; with Atmos beds, which have no speakers below, the lower half goes to the ear-level speakers), or **Pitch / Brightness / Noisiness / Loudness** over the whole sphere (high values above, low values below, from about −85° to +85°). |
 
 With a model, the model's voice is a continuous sound, not grains: it moves as one source (following the cursor, the nearest sound or its properties) and Scatter does not apply to it. Turn **Source** towards your originals to scatter grains.
 

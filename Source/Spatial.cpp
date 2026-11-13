@@ -396,6 +396,17 @@ namespace Spatial
         dist = juce::jmin (1.0f, len / 0.42f);
     }
 
+    // Elevation from where a point sits on the map.
+    // Dome: the middle is right above, the edge on the horizon.
+    // Sphere: the middle is right above, half-way out is the horizon, the edge
+    // (and the corners) right below: the whole map is wrapped around you.
+    static float mapElevation (Height h, float mapX, float mapY)
+    {
+        float a, d;
+        mapDirection (mapX, mapY, a, d);
+        return h == Height::sphere ? 90.0f - d * 180.0f : (1.0f - d) * 90.0f;
+    }
+
     Place Placer::finish (Place p, const Corpus& c, int unit, float mapX, float mapY, juce::Random* rnd) const
     {
         if (by != PlaceBy::eachSound)          // directions set by hand stay where they were put
@@ -405,13 +416,10 @@ namespace Spatial
         {
             case Height::flat: p.el = 0.0f; break;
             case Height::dome:
-            {
-                float a, d;
-                mapDirection (mapX, mapY, a, d);
-                p.el = (1.0f - d) * 90.0f;      // the middle of the map is right above
+            case Height::sphere:
+                p.el = mapElevation (height, mapX, mapY);
                 p.ambiDist = 1.0f;
                 break;
-            }
             default:
                 p.el = (descValue (c, unit, (int) height - 1) - 0.5f) * 170.0f;   // the whole sphere
                 break;
@@ -473,13 +481,8 @@ namespace Spatial
             return finish (p, c, best, x, y, nullptr);
         }
         auto p = placeUnit (c, best, nullptr);
-        if (height == Height::dome)
-        {
-            // dome height follows the cursor itself
-            float a, d;
-            mapDirection (x, y, a, d);
-            p.el = (1.0f - d) * 90.0f;
-        }
+        if (height == Height::dome || height == Height::sphere)
+            p.el = mapElevation (height, x, y);     // the height follows the cursor itself
         return p;
     }
 }
